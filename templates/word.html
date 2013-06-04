@@ -1,0 +1,21 @@
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf8">
+    <script type="text/javascript">
+        function WebOffice1_NotifyCtrlReady(){
+            var url='{{url}}';
+            document.all.WebOffice1.LoadOriginalFile(url,'doc');
+        }
+    </script>
+    <SCRIPT language=javascript event=NotifyCtrlReady for=WebOffice1>
+        WebOffice1_NotifyCtrlReady()
+    </SCRIPT>
+</head>
+<body>
+    <object id=WebOffice1 height=768 width='100%' style='left: 0px;top:0px'
+            classid='clsid:E77E049B-23FC-4DB8-B756-60529A35FAD5'
+            codebase='/static/weboffice_pdf_v6.0.5.0.cab#version=6,0,5,0'>
+        <param name='_ExtentX' value='6350'><param name='_ExtentY' value='6350'>
+    </object>
+</body>
+</html>

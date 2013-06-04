@@ -1,0 +1,41 @@
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf8">
+    <script type="text/javascript">
+        function WebOffice1_NotifyCtrlReady(){
+            //var url='{{url}}';
+            document.all.WebOffice1.LoadOriginalFile("C:/1.doc",'doc');
+            //alert(tempPath);
+            var tempPath=document.all.WebOffice1.GetTempFilePath();
+            //document.all.WebOffice1.SaveAsPDF("","C:/1.pdf",0);
+     
+            alert(document.all.WebOffice1.SaveAsPDF("C:\\1.doc","C:\\1.pdf", 0))
+            // var tempPath=document.all.WebOffice1.GetTempFilePath();
+            // var doc=tempPath+'.doc';
+            // var pdf=tempPath+'.pdf';
+            // var down=document.all.WebOffice1.DownLoadFile(url,doc,"","");
+            // if(down==0){
+            //    // document.all.WebOffice1.SaveAsPDF(doc,pdf,0);
+            //     document.all.WebOffice1.SaveAsPDF('c:/1.doc',pdf,0);
+            //    // document.all.WebOffice1.LoadOriginalFile(pdf,'pdf');
+            // }
+            //document.all.WebOffice1.LoadOriginalFile(doc,'doc');
+            
+            // 
+            // document.all.WebOffice1.LoadOriginalFile(pdf,'pdf');
+            //alert('down load ed!'+tempPath);
+            
+        }
+    </script>
+    <SCRIPT language=javascript event=NotifyCtrlReady for=WebOffice1>
+        WebOffice1_NotifyCtrlReady()
+    </SCRIPT>
+</head>
+<body>
+    <object id=WebOffice1 height=768 width='100%' style='left: 0px;top:0px'
+            classid='clsid:E77E049B-23FC-4DB8-B756-60529A35FAD5'
+            codebase='/static/weboffice_pdf_v6.0.5.0.cab#version=6,0,5,0'>
+        <param name='_ExtentX' value='6350'><param name='_ExtentY' value='6350'>
+    </object>
+</body>
+</html>

@@ -1,0 +1,2 @@
+python manage.py schemamigration core 0001 --auto
+python manage.py migrate
