@@ -67,10 +67,9 @@ Ext.onReady(function() {
     Main.tree = new Ext.tree.TreePanel({
         hideHeaders: true,
         rootVisible: false,
-        width: 250,
+        width: 180,
         region: "west",
         useArrows: true,
-
         frame:true,
         collapsible: true,
         store: Main.treeLoader,
@@ -116,6 +115,7 @@ Ext.onReady(function() {
             type: 'border',
             padding: 5
         },
+
         defaults: {
             split: true
         },
@@ -123,70 +123,16 @@ Ext.onReady(function() {
             id: "head_panel",
             region: "north",
             xtype:'panel',
-            height: 80,
-            frame:true,
+            height: 120,
+           //frame:true,
             layout:'fit',
+            split:false,
+            border:false,
             items:[
                 {
                     xtype:'panel',
-                    html:'<div id="head_info"></div>'
-                }
-            ],
-            buttons:[
-                {
-                    text:'个人信息',
-                    handler:function(){
-                        Ext.Ajax.request({ 
-                            url:'/user/details/',
-                            method:"post",
-                            params:{
-                                id:Main.UserID
-                            },
-                            success:function (response) {
-                                var json = Ext.util.JSON.decode(response.responseText);
-                                var win=new XG.Form.SimpelPoupForm({
-                                    title: '个人信息',
-                                    width:400,
-                                    height:270,
-                                    url:'/user/selfupdate/',
-                                    items:[
-                                        XG.UserFields.real_name,
-                                        XG.UserFields.password,
-                                        XG.UserFields.email,
-                                        XG.UserFields.sex,
-                                        XG.UserFields.phone,
-                                        XG.UserFields.mobile
-                                    ]
-                                });
-                                win.fill(json);
-                                win.show(this);
-                            },
-                            failure:function (form, action) {
-                                if ('result' in action) {
-                                    if ('msg' in action.result) {
-                                        error(action.result.msg);
-                                    }
-                                }
-                                else {
-                                    error('发生异常!');
-                                }
-                            }
-                        });
-                        
-                    }
-                },
-                {
-                    text:'返回首页',
-                    handler:function(){
-                        Main.ClearTab();
-                        Main.tab_panel.setActiveTab(Main.welcome_tab);
-                    }
-                },
-                {
-                    text:'注销',
-                    handler:function(){
-                        window.parent.location.href='/loginout/';
-                    }
+                    border:false,
+                    html:'<div id="index_head" class="index_head"></div>'
                 }
             ]
         },
@@ -196,8 +142,10 @@ Ext.onReady(function() {
             region: "south",
             xtype:'panel',
             height: 35,
-            frame:true,
-            html:'<div id="foot_info"></div>'
+            split:false,
+            border:false,           
+            //frame:true,
+            html:'<div id="index_main_r_foot" class="index_main_r_foot"></div>'
         }]
     });
 
@@ -248,14 +196,14 @@ Ext.onReady(function() {
                 }else{
                     Main.WaringProjects=[];
                 }
-                
-                var info ="当前系统在线人数:"+onlinecount+"人,";
+
+                var info ="&nbsp;&nbsp;当前系统在线人数:"+onlinecount+"人,";
                 info+="您的登录次数:"+logincount+",";
                 info+="最后登录IP地址为:"+lastip+",";
-                info+="申报问题请咨询您单位管理员,"
-                info+="联系电话:888888888";
-                Ext.get("foot_info").dom.innerHTML =
-                "<h6 style='font-size:14;font-family: sans-serif;'>"+info+"</h6>";
+                info+="申报问题请咨询您单位管理员<"+Main.AdminRealName+">,"
+                info+="联系电话:"+Main.AdminPhone;
+    
+                Ext.get("index_main_r_foot").dom.innerHTML =info;
                 if(res.msg!='OK'){
                     show_message(res.msg);
                 }

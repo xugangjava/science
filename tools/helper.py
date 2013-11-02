@@ -45,17 +45,24 @@ def StartLimit(request):
 
 
 def GetParam(reques,*params):
-
 	kv={}
 	for p in params:
 		if reques.GET.has_key(p):
-			kv[p]=smart_unicode(reques.GET[p])
+			if p.startswith('g__'):
+				kv[p]= reques.GET.getlist(p)
+			else:
+				kv[p]=reques.GET[p]
 		elif reques.POST.has_key(p):
-			kv[p]=smart_unicode(reques.POST[p])
+			if p.startswith('g__'):
+				kv[p]= reques.POST.getlist(p)
+			else:
+				kv[p]=reques.POST[p]
 		else:
 			print 'baseParam '+str(p)+ ' lost '
 			raise Http404
 	return kv
+
+
 
 def GetArrayParams(reques,*params):
 	kv={}
@@ -111,22 +118,39 @@ def IdArray(ids):
 	return [int(i)  for i in ids.split(',')]
 
 
-def FillModel(kv, object, exclude=None):
+
+def FilGModel(objtype,kv,*arg):
+	m=[]
+	count=len(kv[arg[0]])
+	for i in xrange(count):
+		obj=objtype()
+		for a in arg:
+			attr_name=a.split("__")[2]
+			value,attr=kv[a][i], getattr(obj,attr_name)
+			if isinstance(attr,int):
+				value=int(value)
+			elif isinstance(attr,datetime.datetime):
+				value= datetime.datetime.fromtimestamp(time.mktime(time.strptime(value,u"%Y年%m月%d日")))
+			setattr(obj,attr_name,value)
+		m.append(obj)
+	return m
+
+def FillModel(kv, obj, exclude=None):
 	if not exclude: exclude = []
 	for k,v in kv.iteritems():
 		if k in exclude:continue
+		if k.startswith('g__'):continue
 		if Const.DEBUG:print 'now run set filed '+k
 		if not v:return ErrCallBack('缺少参数'+k)
-		if not hasattr(object,k):return ErrCallBack('属性名错误'+k)
-		value,attr=v,getattr(object,k)
+		if not hasattr(obj,k):return ErrCallBack('属性名错误'+k)
+		value,attr=v,getattr(obj,k)
 		if isinstance(attr,int):
 			value=int(value)
 		elif isinstance(attr,datetime.datetime):
 			value= datetime.datetime.fromtimestamp(time.mktime(time.strptime(value,u"%Y年%m月%d日")))
-
-		setattr(object,k,value)
+		setattr(obj,k,value)
 		if Const.DEBUG:print 'finished set filed '+k
-	return object
+	return obj
 
 class TryGetParamResult:
 	def __init__(self):
@@ -183,17 +207,25 @@ def RawDoc(filecode):
 		code=None
 	return code
 
+class Email:
+	def __init__(self,toemail,message):
+		self.toemail=toemail
+		self.msg=MIMEText(message.encode('utf-8'),'html','utf-8')
+		self.msg['Subject'] = '国家民委项目申报系统提示'
 
-def EmailNotify(to_users,message):
-	me="<sysnotify@163.com>"
-	msg = MIMEText(message)
-	msg['Subject'] = '市科技局审核系统提示'
+	def Send(self,s):
+		s.sendmail("<sysnotify@163.com>",self.toemail, self.msg.as_string())
+
+def EmailNotify(emails):
+	# me="<sysnotify@163.com>"
+	# msg =MIMEText(message.encode('utf-8'),'html','utf-8')
+	# msg['Subject'] = '市科技局审核系统提示'
 	try:
 		s = smtplib.SMTP()
 		s.connect('smtp.163.com')
 		s.login('sysnotify','123456aA')
-		for u in to_users:
-			s.sendmail(me,u.email, msg.as_string())
+		for e in emails:
+			e.Send(s)
 		s.close()
 		return True
 	except Exception, e:

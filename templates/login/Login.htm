@@ -1,60 +1,49 @@
 <!DOCTYPE html>
-<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-	<title>用户登录 -国家民委项目申报系统</title>
-	<meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-	<link href="/static/login/Login.css" media="screen" rel="stylesheet" type="text/css">
-    <script type="text/javascript">
-        function newcode(img){
-            img.src='/login/code/?p='+Math.random();
-        }
-    </script>
+<html>
+<head>
+<meta charset="utf-8">
+<title>国家民委项目申报系统</title>
+<link href="/static/newcss/style.css" rel="stylesheet" type="text/css">
+ <script type="text/javascript">
+    function newcode(img){
+        img.src='/login/code/?p='+Math.random();
+    }
+
+</script>
 </head>
-<body class="box">
-	<div id="container" style="max-width: 480px">
-		<span id="_top"></span>
-<div id="header" class="group"> 
-	<h2 id="logo">
-		<a href="#" data-skip-pjax="true">
-			<span class="title">国家民委项目申报系统</span>
-</a>	</h2> 
-	<div id="account-nav"> 
-			<p>用户登录</p>
-	</div> 
-</div> 
-<div id="content">
-	<form accept-charset="UTF-8" action="/login/" class="new_user_session" id="new_user_session" method="post"><div style="margin:0;padding:0;display:inline">
+<body id="mw">
+<form accept-charset="UTF-8" action="/login/" class="new_user_session" id="new_user_session" method="post">
+<div class="mw_login">
+	<div class="mw_login_a">
+		<img src="/static/newcss/images/login_title.jpg" />
 	</div>
-
-	  <div class="field text-field">
-	    <label for="user_session_login">用户名</label><br>
-	    <input class="text-field" id="user_session_login" name="name" size="30" type="text">
-	  </div>
-	  <div class="field text-field">
-	    <label for="user_session_password">密 码</label><br>
-	    <input class="text-field" id="user_session_password" name="password" size="30" type="password">
-	  </div>
-        <div class="field text-field">
-            <label for="user_session_password">验证码</label><br>
-            <label for="user_session_code">
-                <input class="text-field" id="user_session_code" name="code"  type="text" style="width: 50px;vertical-align: top;"/>
-                <img src="/login/code/" onclick="newcode(this)"/>
-            </label>
-        </div>
-		<div class="field" >
-	     {{errormessage}}
-	  	</div>
-	  <div class="actions">
-	    <input class="button" name="commit" type="submit" value="登录"/></div>
-	</form>
-</div>
-<div class="addon-content">
 	
-</div>
-<div id="footer-container">
-	<div id="footer" class="group">
-		<p>© 2012-2013 国家民委<br></p>
+	<div class="mw_login_b">
+		<h2>用户登录</h2>
+		<div class="login_input_a">
+			<label>用户名</label>
+			<input type="text" class="input_a" placeholder="请输入用户名" id="user_session_login" name="name"/>
+		</div>
+		<div class="login_input_a">
+			<label>密码</label>
+			<input type="password" class="input_a" placeholder="请输入密码" id="user_session_password" name="password"/>
+		</div>
+		<div class="login_input_a">
+			<label>验证码</label>
+			<span class="input_c"><img src="/login/code/" onclick="newcode(this)"/></span>
+			<input type="text" class="input_b" placeholder="请输入验证码" id="user_session_code" name="code"  />
+			
+		</div>
+		<div class="login_input_b">
+			<div class="input_d"><a href="index.html"><input type="submit" value="登录" style="width:100%; background:none; font-size:20px; text-align:center; line-height:35px; border:0 none; color:#fff; cursor:pointer;" /></a></div>
+			<div class="input_e"><a href="/user/register/"><span>个人注册</span></a><a href="/register/unittype/"><span>单位注册</span></a></div>
+		</div>
+		<div class="field" >{{errormessage}}</div>
+	</div>
+	<div class="mw_login_c">
+		<p>© 2012-2013 国家民委</p>
 	</div>
 </div>
-	</div>
-
-</body></html>
+</form>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	<title>单位注册 -国家民委项目申报系统</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+	<link href="/static/login/Login.css" media="screen" rel="stylesheet" type="text/css">
+	  <script type="text/javascript">  
+		var totalremainTime = 4;  
+		function remainTime(){  
+		    if(totalremainTime==0){  
+		        location.href='/';  
+		    }  
+		    document.getElementById('endtime').innerHTML=totalremainTime--;  
+		    setTimeout("remainTime()",1000);  
+		} 
+		window.history.forward(1);
+	</script>  
+</head>
+
+<body class="box" onload="remainTime()">
+
+	<div id="container" style="max-width: 480px">
+		<span id="_top"></span>
+<div id="header" class="group"> 
+	<h2 id="logo">
+		<a href="#" data-skip-pjax="true">
+			<span class="title">国家民委项目申报系统</span>
+</a>	</h2> 
+	<div id="account-nav"> 
+			<p>单位注册</p>
+	</div> 
+</div> 
+<div id="content">
+	<div class="flash error" >
+	     {{message}}
+  	</div>
+  	<br/>
+  	<div class="flash error">系统将会在<strong id="endtime"></strong>秒后跳转到登录页！</div>
+</div>
+<div class="addon-content">
+	
+</div>
+<div id="footer-container">
+	<div id="footer" class="group">
+		<p>© 2012-2013 国家民委<br></p>
+	</div>
+</div>
+	</div>
+</body></html>

@@ -1,12 +1,16 @@
+
 <html>
 <head>
 	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>国家民委项目申报系统</title>
     {% load static %}
     {% get_static_prefix as STATIC_PREFIX %}
     <link rel="stylesheet" type="text/css" href="{{STATIC_PREFIX}}resources/css/ext-all.css"/>
+    <link href="{{STATIC_PREFIX}}newcss/style.css" rel="stylesheet" type="text/css">
     <link rel="stylesheet" type="text/css" href="{{STATIC_PREFIX}}resources/css/icon.css"/>
     <script type="text/javascript" src="{{STATIC_PREFIX}}ext-base.js" charset="utf-8"></script>
-    <script type="text/javascript" src="{{STATIC_PREFIX}}ext-all-debug.js"  charset="utf-8"></script>
+    <script type="text/javascript" src="{{STATIC_PREFIX}}ext-all.js"  charset="utf-8"></script>
+    <script type="text/javascript" src="{{STATIC_PREFIX}}ext-basex.js" charset="utf-8"></script>
     <script type="text/javascript" src="{{STATIC_PREFIX}}ext-lang-zh_CN.js" charset="utf-8"></script>
     <script type="text/javascript" src="{{STATIC_PREFIX}}core/common.js"  charset="utf-8"></script>
     <script type="text/javascript" src="{{STATIC_PREFIX}}core/controls.js"  charset="utf-8"></script>
@@ -14,6 +18,8 @@
     {%block scripts_block%}{% endblock %}
 </head>
 <body>
+<div id="mw_index">
 {%block body%}{% endblock %}
+</div>
 </body>
 </html>

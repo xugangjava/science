@@ -20,6 +20,8 @@ function debugform(form){
     alert(s);  
 }
 
+Array.prototype.Clone=function(){ return [].concat(this); } 
+
 //crsf验证
 Ext.Ajax.on('beforerequest', function (conn, options) {
     if (!(/^http:.*/.test(options.url) || /^https:.*/.test(options.url))) {
@@ -44,6 +46,32 @@ function unmask(){
 function isArrary(obj){
     return Object.prototype.toString.call(obj) === '[object Array]';
        
+}
+
+
+function isNatual(val){
+    if(val=="")return false;
+    try  
+    {  
+        if(/^[\d]*$/.test(val))  
+            return true;  
+        return false;  
+    }  
+    catch(e)  
+    {  
+        return false;  
+    }  
+}
+
+function isHasSameVar(arr) {
+    for (var i = arr.length - 1; i >= 0; i--) {
+        var cur=arr[i];
+        for (var j = arr.length - 1; j >= 0; j--) {
+            if(i==j)continue;
+            if(arr[j]==arr[i])return true;
+        };
+    };
+    return false;
 }
 
 Ext.apply(Ext.form.VTypes, {

@@ -145,7 +145,7 @@ XG.Control.AbstractGrid=Ext.extend(Ext.grid.GridPanel,{
             iconCls:iconCls,
             handler:function () {
                     var ids = Main.CurrentGrid().getIdArr();
-                    if (ids == null)return;
+                    if (!ids||ids.length==0)return;
                     confirm('确认删除选中的信息吗？<br/>相关联的数据也会被删除，请谨慎操作！', function (e) {
                         Ext.Ajax.request({
                             url:config.url,
@@ -199,8 +199,12 @@ XG.Control.AbstractGrid=Ext.extend(Ext.grid.GridPanel,{
                     Main.CurrentGrid().getStore().load();
                     alert('修改成功！');
                 });
-                var pk = Main.CurrentGrid().getFirst();
-                if (pk == null)return;
+                var sels = Main.CurrentGrid().getIdArr();
+                if(sels.length!=1){
+                    alert('请单选需要修改的数据！');
+                    return;
+                }
+                var pk=sels[0];
                 Ext.Ajax.request({
                     url:url,
                     method:"post",
@@ -226,6 +230,7 @@ XG.Control.AbstractGrid=Ext.extend(Ext.grid.GridPanel,{
             }
         };
     },
+  
     modify_row:function(config){
         var text = config.text;
         var iconCls = config.hasOwnProperty('iconCls') ? config.iconCls : 'Vcardkey';
@@ -258,46 +263,20 @@ XG.Control.AbstractGrid=Ext.extend(Ext.grid.GridPanel,{
                     text:config.argreeText?config.argreeText:"同意审核",
                     handler:function () {
                         var f=form.getForm();
-                        if(!f.isValid())return;
+                       
                         Ext.getCmp(idsID).setValue(idArr.join());
                         Ext.getCmp(passID).setValue(true);
-                        f.submit({
-                            url:config.url,
-                            method:"post",
-                            success:function () {
-                                win.close();
-                                Main.CurrentGrid().getStore().load();
-                                alert('操作成功!');
-                            },
-                            failure:function (form, action) {
-                                win.close();
-                                if ('result' in action) {
-                                    if ('msg' in action.result) {
-                                        error(action.result.msg);
-                                    }
-                                }
-                                else {
-                                    error('发生异常!');
-                                }
-
-                            }
-                        });
-                    }
-                });
-                var disagree=new Ext.Button({
-                    text:config.disagreeText?config.disagreeText:"退回请求", 
-                    handler:function () {
-                            var f=form.getForm();
-                            if(!f.isValid()) return;
-                            Ext.getCmp(idsID).setValue(idArr.join());
-                            Ext.getCmp(passID).setValue(false);
+                        if(config.agreeHandler){
+                            config.agreeHandler(f,win);
+                        }else{
+                            if(!f.isValid())return;
                             f.submit({
-                                clientValidation: true,
-                                url: config.url,
+                                url:config.url,
+                                method:"post",
                                 success:function () {
                                     win.close();
                                     Main.CurrentGrid().getStore().load();
-                                    alert('审核成功!');
+                                    alert('操作成功!');
                                 },
                                 failure:function (form, action) {
                                     win.close();
@@ -309,8 +288,44 @@ XG.Control.AbstractGrid=Ext.extend(Ext.grid.GridPanel,{
                                     else {
                                         error('发生异常!');
                                     }
+
                                 }
                             });
+                        }
+                    }
+                });
+                var disagree=new Ext.Button({
+                    text:config.disagreeText?config.disagreeText:"退回请求", 
+                    handler:function () {
+                            var f=form.getForm();
+                            Ext.getCmp(idsID).setValue(idArr.join());
+                            Ext.getCmp(passID).setValue(false);
+                            if(config.disagreeHandler){
+                                config.disagreeHandler(f,win);
+                            }else{
+                                if(!f.isValid()) return;
+                                f.submit({
+                                    clientValidation: true,
+                                    url: config.url,
+                                    success:function () {
+                                        win.close();
+                                        Main.CurrentGrid().getStore().load();
+                                        alert('审核成功!');
+                                    },
+                                    failure:function (form, action) {
+                                        win.close();
+                                        if ('result' in action) {
+                                            if ('msg' in action.result) {
+                                                error(action.result.msg);
+                                            }
+                                        }
+                                        else {
+                                            error('发生异常!');
+                                        }
+                                    }
+                                });
+                            }
+                       
                         }
                     });
                 var formItems=[];
@@ -322,7 +337,8 @@ XG.Control.AbstractGrid=Ext.extend(Ext.grid.GridPanel,{
                 }
 
                 var optiontxt=config.optionText?config.optionText:"审核意见"
-                formItems.push({xtype:"textarea",fieldLabel:optiontxt,name:'option',width:200, height:80});
+                var optionAllowBanlk=config.optionAllowBanlk?true:false;
+                formItems.push({xtype:"textarea",fieldLabel:optiontxt,name:'option',width:200, height:80,allowBlank:optionAllowBanlk});
                 formItems.push({xtype:"hidden",name:'ids',id:idsID});
                 formItems.push({xtype:"hidden",name:'pass',id:passID});
                 if(!config.width)config.width=350;
@@ -373,7 +389,6 @@ XG.Control.AbstractGrid=Ext.extend(Ext.grid.GridPanel,{
 
     project_apply_type_combo:function(config){
         var p_types=config.p_types;
-
         chooice=[{pk:0,name:'显示所有类型'}];
         for(var i=0;i<p_types.length;i++){
             chooice.push(p_types[i]);
@@ -528,51 +543,49 @@ XG.Control.RemoteCombo = Ext.extend(Ext.form.ComboBox,{
         this.name=config.name;
         this.url=config.url;
         this.baseParams=config.baseParams;
+        this.valueField=config.valueField;
+        this.displayField=config.displayField;
         XG.Control.RemoteCombo.superclass.constructor.call(this,config); 
     },
     initComponent: function() {
-        var fileds=[
-            {name:'pk', mapping:'pk', type:'int'},
-            {name:'name', mapping:'name', type:'string'}
-        ];
-        if( this.baseFields){
-            for(var i=0;i<this.baseFields.length;i++){
-                fileds.push(this.baseFields[i]);
-            }
-        }
-        var reader;
-        reader = new Ext.data.JsonReader({
-            root:"items",
-            fields:fileds
-        });
         var name=this.name,url=this.url;
-        var proxy = new Ext.data.HttpProxy({
-            type:'ajax',
-            url:url
-        });
-        var store = new Ext.data.Store({
-            baseParams:this.baseParams,
-            proxy:proxy,
-            reader:reader
-        });
-        Ext.apply(this,{
-            hiddenName:name,
-            store:store,
-            valueField:'pk',
-            triggerAction:'all',
-            displayField:'name',
-            mode:'local',
-            editable:false
-        });
-        var combo=this;
-        store.load({
-            callback:function(r,option,success){
-                if(success&&r.length>0){
-                    combo.setValue(store.getAt(0).data.pk);
+        var valueField=this.valueField?this.valueField:'pk';
+        var displayField=this.displayField?this.displayField:'name';
+        var data=[];
+        Ext.Ajax.request({
+            url:url,
+            async:false,
+            success:function(response){
+                var json=Ext.decode(response.responseText);
+                var items=json.items;
+                if(items||items.length>0){
+                    for (var i = items.length - 1; i >= 0; i--) {
+                        data.push([items[i][valueField],items[i][displayField]]);
+                    };
                 }
             }
         });
+        data.reverse();
+        this.data=data;
+        var value=null;
+        if(data.length>0){
+            value=data[0][0];
+        }
+        Ext.apply(this,{
+            hiddenName:name,
+            store:new Ext.data.SimpleStore({
+                fields:[valueField,displayField],
+                data:data
+            }),
+            valueField:valueField,
+            triggerAction:'all',
+            displayField:displayField,
+            mode:'local',
+            editable:false,
+            value:value
+        });
     }
+
 });
 Ext.reg('remotecombo',XG.Control.RemoteCombo);
 
@@ -585,10 +598,17 @@ XG.Control.LocalCombo = Ext.extend(Ext.form.ComboBox,{
         XG.Control.LocalCombo.superclass.constructor.call(this,config); 
     },
     initComponent: function() {
-        var store=new Ext.data.SimpleStore({
-            fields:['value','text'],
-            data:this.data
-        });
+        var defaultValue,store;
+        if(isArrary(this.data)){
+            store=new Ext.data.SimpleStore({
+                fields:['value','text'],
+                data:this.data
+            });
+            defaultValue=this.data[0][0];
+        }else{
+            store=this.data;
+            defaultValue=store.getAt(0).data.value;
+        }
         Ext.apply(this,{
             hiddenName:this.name,
             name:this.name+'_s',
@@ -598,8 +618,12 @@ XG.Control.LocalCombo = Ext.extend(Ext.form.ComboBox,{
             displayField:'text',
             mode:'local',
             editable:false,
-            value:this.data[0][0]
+            value:defaultValue
         });
+    },
+    setValue:function(value){
+
+        XG.Control.LocalCombo.superclass.setValue.call(this,value); 
     }
 });
 Ext.reg('localcombo',XG.Control.LocalCombo);
@@ -716,10 +740,48 @@ function DefaultCellHanlder(config){
             });
             win.show();
         }
+        else if(colIdx==config.showExpertIdx)
+        {
+            var record = grid.getStore().getAt(rowIdx);
+            var pk=record.json.pk;
+            function YesNo(value){
+                return value==1?'是':'否';
+            }
+            var win=new Ext.Window({
+                title:'专家评分',
+                width:700,
+                minWidth:400,
+                height:400,
+                layout:'fit',
+                items:[{
+                    xtype:'basegrid',
+                    url:'/project/apply/expertapproves/',
+                    nocheck:true,
+                    baseParams:{
+                        pk:pk
+                    },
+                    columes:[
+                        {header:'项目名称', dataIndex:'apply__project_name', flex:1 },
+                        {header:'项目编号', dataIndex:'apply__project_no', flex:1 },
+                        {header:'评审专家', dataIndex:'expert__name', flex:1 },
+                        {header:'拒绝评审', dataIndex:'refused', flex:1,renderer:YesNo},
+                        {header:'评审时间', dataIndex:'approvetime', flex:1,
+                            renderer:function(value, cellmeta, record, rowIndex, columnIndex, store){
+                                return record.data['approved']?value:'';
+                            }
+                        },
+                    
+                        {header:'评分', dataIndex:'expert_percent', flex:1 },
+                        {header:'资助意见', dataIndex:'expert_support', flex:1 },
+                        {header:'邮件回执', dataIndex:'email_back', flex:1,renderer:YesNo}
+                    ]   
+                }]
+            });
+            win.show();
+        }
     }
     return handler;
 }
-
 
 
 function DefaultDateFeild(config){
@@ -838,12 +900,14 @@ XG.Form.SimpelPoupForm = Ext.extend(Ext.Window, {
         this.border = false;
 
         var win = this;
+        this.sbId=Ext.id();
         var form = new Ext.FormPanel({
             bodyStyle: 'padding:5px 5px 0',
             region: 'center',
             fieldDefaults: {
                 msgTarget: 'side'
             },
+            autoScroll:true,
             collect_params: config.collect_params,
             labelWidth: config.labelWidth,
             defaultType: 'textfield',
@@ -864,9 +928,17 @@ XG.Form.SimpelPoupForm = Ext.extend(Ext.Window, {
             },
             buttons: [{
                 text: '保存',
+                id:win.sbId,
                 handler: function() {
                     var form = win.items.itemAt(0).getForm();
                     if(!form.isValid()) return;
+                    if(config.vailidate)
+                    {
+                        if(!config.vailidate(form))
+                        {
+                            return;
+                        }
+                    }
                     var baseParams = {};
                     if(form.collect_params) {
                         var baseParams = form.collect_params(form);
@@ -917,23 +989,65 @@ XG.Form.SimpelPoupForm = Ext.extend(Ext.Window, {
   
         XG.Form.SimpelPoupForm.superclass.constructor.call(this, config);
     },
+    setReadOnly:function(bReadOnly){
+        var items=this.getItems();
+        for (var i = items.length - 1; i >= 0; i--) {
+            if(items[i].setReadOnly){
+                items[i].setReadOnly(true);
+            }
+        };
+        Ext.getCmp(this.sbId).hide();
+    },
+    getItems:function(){
+        var form=this.items.itemAt(0).getForm();
+        var items=[];
+        form.items.each(function (field) {
+            if(items.xtype=='fieldset'){
+                items.items.each(function(f){
+                    items.pushp[f];
+                });
+            }else if(items.xtype=='onetomanyfields'){
+                var temp=[];
+                items.items.each(function(f){
+                    temp.pushp[f];
+                });
+            }else{
+                items.push(field);
+            }
+        });
+        return items;
+    },
     fill:function (json) {
         var form=this.items.itemAt(0).getForm();
-        form.reset();
         var filed,value;
+        var one2manys=this.find('xtype','onetomanyfields');
         for(var obj in json){
-            fields=form.findField(obj);
-            if(fields){
-                value = json[obj];
-                if(true==value){
-                    value=1;
+            if(isArrary(json[obj])){
+                var jarray=json[obj];
+                var gfield=null;
+                if(!one2manys||one2manys.length==0)continue;
+                for (var i = one2manys.length - 1; i >= 0; i--) {
+                    gfield=one2manys[i];
+                    if(!gfield.gname!=obj)continue;
+                    break;
+                };
+                if(!gfield)continue;
+                gfield.setValue(jarray);
+            }else{
+                fields=form.findField(obj);
+                if(fields){
+                    value = json[obj];
+                    if(true==value){
+                        value=1;
+                    }
+                    else if(false==value){
+                        value=0;    
+                    }
+                    fields.setValue(value);
                 }
-                else if(false==value){
-                    value=0;    
-                }
-                fields.setValue(value);
             }
         }
+            
     }
 });
 Ext.reg('poupform', XG.Form.SimpelPoupForm);
@@ -986,13 +1100,13 @@ XG.UnitFields = {
         queryDelay: 0,
         triggerAction: 'all'
     },
-    no:{fieldLabel:'项目编号', name:'no'},
+    no:{fieldLabel:'单位名称全拼', name:'no',emptyText:'(每个字首字母大写)'},
     parent_unit__name:{fieldLabel:'所属单位名称', name:'parent_unit__name'},
     phone:{fieldLabel:'电话', name:'phone'},
     address:{fieldLabel:'单位地址', name:'address'},
     max_project:{name:'max_project', fieldLabel:'最大申请项目数'},
-    apply_starttime:{name:'apply_starttime', fieldLabel:'申报开始时间', xtype:'datefield', altFormats:'Y年m月d日', format:'Y年m月d日'},
-    apply_endtime:{name:'apply_endtime', fieldLabel:'申报结束时间', xtype:'datefield', altFormats:'Y年m月d日', format:'Y年m月d日'}
+    apply_starttime:{name:'apply_starttime', fieldLabel:'申报开始时间', xtype:'datefield', altFormats:'Y年m月d日', format:'Y年m月d日',width:170},
+    apply_endtime:{name:'apply_endtime', fieldLabel:'申报结束时间', xtype:'datefield', altFormats:'Y年m月d日', format:'Y年m月d日',width:170}
 };
 
 Ext.ns("XG.ProjectTypeFields");
@@ -1030,6 +1144,133 @@ XG.Message={
     content:{fieldLabel:'项目名称', name:'content'}
 }
 
+Ext.ns("XG.Form.OneToManyFields");
+XG.Form.OneToManyFields=Ext.extend(Ext.form.FieldSet ,{
+    constructor: function(config) {
+        var id=config.id?config.id:Ext.id();
+        var gname=config.gname;
+        this.id=id;
+        var items=[],curitem,json;
+        var me=this;
+        this.border=true;
+        this.store=[];
+        if(config.collapsible)this.collapsible=true;
+        for (var i = config.citems.length - 1; i >= 0; i--) {
+            var curitem=config.citems[i];
+            if(curitem.xtype=='groupcombo'){
+                var data=[];
+                Ext.Ajax.request({
+                    url:curitem.url,
+                    async:false,
+                    success:function(response){
+                        json=Ext.decode(response.responseText);
+                        for (var i = json.items.length - 1; i >= 0; i--) {
+                            data.push([
+                                json.items[i][curitem.valueField],
+                                json.items[i][curitem.displayField]]);
+                        };
+                    }
+                });
+                data.reverse();
+                this.store[curitem.name]=new Ext.data.SimpleStore({
+                    fields:['value','text'],
+                    data:data
+                });
+                items.push({
+                    fieldLabel:curitem.fieldLabel,
+                    xtype:'localcombo',
+                    name:curitem.name,
+                    data:this.store[curitem.name],
+                    listeners:curitem.listeners
+                });
+            }else{
+                items.push(curitem);
+            }
+        };
+        items.reverse();
+
+        this.addSelf=function(){
+            var f=Ext.getCmp(id);
+            if(config.max){
+                var index=f.items.length;
+                if(index>=config.max){
+                    alert('限填'+config.max+'项,无法继续添加信息了！');
+                    return;
+                }
+            }    
+            f.add({
+                xtype:'fieldset',
+                bodyStyle:'padding:5px',
+                items:items
+            });
+            f.doLayout()
+        }
+
+        this.removeSelf=function(){
+            var f=Ext.getCmp(id);
+            var index=f.items.length;
+            if(index<=1)return;
+            var cmp=f.items.items[index-1];
+            f.remove(cmp,true);
+        }
+
+        this.setValue=function(jarray){
+            var f=Ext.getCmp(id);
+            var len=jarray.length-1,fields,filedName;
+            for (var i = len - 1; i >= 0; i--)f.addSelf();
+            for(var attr in jarray[0]){
+                filedName='g__'+gname+'__'+attr;
+                fields=f.find('name',filedName);
+                //combo hiddname
+                if(!fields||fields.length==0)fields=f.find('name',filedName+'_s');
+                if(!fields||fields.length==0)continue;
+                for (var i = fields.length - 1; i >= 0; i--) {
+                    fields[i].setValue(jarray[i][attr]);
+                };
+            }
+        }
+
+        this.refreshStore=function(fieldName){
+
+        }
+
+        this.getStore=function(fieldName){
+            return me.store[fieldName]
+        }
+
+        this.setReadOnly=function(bReadOnly){
+            var f=Ext.getCmp(id);
+            for (var i = 0; i < f.buttons.length; i++) {
+                if(bReadOnly){
+                    f.buttons[i].hide();
+                }else{
+                    f.buttons[i].show();
+                }
+            };
+        }
+
+        this.buttons=[
+            {
+                text:'继续添加',
+                handler:this.addSelf
+            },
+            {
+                text:'移除',
+                handler:this.removeSelf
+            }
+        ];
+        this.config=config;
+        this.items=[{
+            xtype:'fieldset',
+            bodyStyle:'padding:5px',
+            items:items
+        }];
+        XG.Form.OneToManyFields.superclass.constructor.call(this, config);
+    }
+
+});
+Ext.reg('onetomanyfields',XG.Form.OneToManyFields);
+
 
 Ext.ns("XG.Form.AbstractForm");
 XG.Form.AbstractForm.create = function (config) {
@@ -1039,6 +1280,13 @@ XG.Form.AbstractForm.create = function (config) {
         handler:function () {
             if (!form.isValid())return;
             if(submit_click)return;
+            if(config.vailidate)
+            {
+                if(!config.vailidate(form))
+                {
+                    return;
+                }
+            }
             submit_click=true;
             win.hide();
             form.submit({
@@ -1077,9 +1325,9 @@ XG.Form.AbstractForm.create = function (config) {
     });
 
     var formPanel = new Ext.FormPanel({
-        frame:true,
         bodyStyle:'padding:5px 5px 0',
         region:'center',
+        autoScroll:true,
         fieldDefaults:{
             msgTarget:'side'
         },
@@ -1102,17 +1350,31 @@ XG.Form.AbstractForm.create = function (config) {
         fill:function (json) {
             form.reset();
             var filed,value;
+            var one2manys=formPanel.find('xtype','onetomanyfields');
             for(var obj in json){
-                fields=form.findField(obj);
-                if(fields){
-                    value = json[obj];
-                    if(true==value){
-                        value=1;
+                if(isArrary(json[obj])){
+                    var jarray=json[obj];
+                    var gfield=null;
+                    if(!one2manys||one2manys.length==0)continue;
+                    for (var i = one2manys.length - 1; i >= 0; i--) {
+                        gfield=one2manys[i];
+                        if(!gfield.gname!=obj)continue;
+                        break;
+                    };
+                    if(!gfield)continue;
+                    gfield.setValue(jarray);
+                }else{
+                    fields=form.findField(obj);
+                    if(fields){
+                        value = json[obj];
+                        if(true==value){
+                            value=1;
+                        }
+                        else if(false==value){
+                            value=0;    
+                        }
+                        fields.setValue(value);
                     }
-                    else if(false==value){
-                        value=0;    
-                    }
-                    fields.setValue(value);
                 }
             }
         },
@@ -1224,3 +1486,4 @@ XG.Form.MessageForm.create = function (config) {
         buttons:[submit, cancel]
     });
 };
+

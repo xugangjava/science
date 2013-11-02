@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    {%ifequal level '1' %}
+    <title>一级单位注册 -国家民委项目申报系统</title>
+    {%else%}
+     <title>二级单位注册 -国家民委项目申报系统</title>
+    {%endifequal%}
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style type="text/css"> 
+            body { 
+                font: normal 11px auto "Trebuchet MS", Verdana, Arial, Helvetica, sans-serif; 
+                color: #4f6b72; 
+                background: #E6EAE9; 
+            } 
+            a {
+                color: #c75f3e; 
+            } 
+            #mytable { 
+                width: 700px; 
+                padding: 0; 
+                margin: 0; 
+            } 
+            caption { 
+                padding: 0 0 5px 0; 
+                width: 700px;      
+                font: italic 11px "Trebuchet MS", Verdana, Arial, Helvetica, sans-serif; 
+                text-align: right; 
+            } 
+            th.nobg { 
+                border-top: 0; 
+                border-left: 0; 
+                border-right: 1px solid #C1DAD7; 
+                background: none; 
+            } 
+            td { 
+                border-right: 1px solid #C1DAD7; 
+                border-bottom: 1px solid #C1DAD7; 
+                background: #fff; 
+                font-size:11px; 
+                padding: 6px 6px 6px 12px; 
+                color: #4f6b72; 
+            } 
+            td.alt { 
+                background: #F5FAFA; 
+                color: #797268; 
+            }
+        </style>
+        <script type="text/javascript">
+             function $(id){
+                return document.getElementById(id);
+             }
+             function onSubmit (){
+                if($('user_session_code').value==""){alert('请输入验证码！');return false;}
+                if($('name').value==""){alert('请输入单位名称！');return false;}
+                if($('faren').value==""){alert('请输入法人名称！');return false;}
+                if($('zipcode').value==""){alert('请输入单位名称！');return false;}
+                if($('unit_code').value==""){alert('请输入中文全拼！');return false;}
+                if($('orgcode').value==""){alert('请输入组织机构代码！');return false;}
+                if($('jobunit').value==""){alert('请输入业务部门！');return false;}
+                if($('uphone').value==""){alert('请输入单位电话（业务部门）！');return false;}
+                if($('aname').value==""){alert('请输入管理员用户名！');return false;}
+                if($('areal_name').value==""){alert('请输入联系人！');return false;}
+                if($('email').value==""){alert('请输入管理员邮箱！');return false;}
+                if($('phone').value==""){alert('请输入办公电话！');return false;}
+                if($('address').value==""){alert('请输入单位地址！');return false;}
+                if($('identitycard').value==""){alert('请输入管理员身份证号！');return false;}
+                if($('mobile').value==""){alert('请输入手机！');return false;}
+                if($('password').value==""){alert('请输入管理员密码！');return false;}
+                if($('cpassword').value!=$('password').value){alert('请确认两次密码一致！');return false;}
+                return true;
+             }
+        </script>
+        <script type="text/javascript">
+            function newcode(img){
+                img.src='/login/code/?p='+Math.random();
+            }
+        </script>
+</head>
+<body>
+<center>
+   <form action="/unit/register/add/" onsubmit="return onSubmit()" method="post">
+    <input type="hidden" value="{{level}}" name="level"/>
+    {%ifequal level '1'%}
+        <table width="85%" height="85%">
+            {%ifequal level '1' %}
+             <tr><td colspan="6" align="left">提示信息：点击“提交注册申请”后直接用A4纸型打印，请在浏览器->打印设置->页面设置 中设置打印的页边距、页眉、页脚等。<br/>请将负责人签字和单位盖章的页面寄送至国家民委教育科技司综合处，待受理部门收悉纸质材料并审核后予以开通。联系电话：010-66508703</td></tr>
+            {%else%}
+            <tr><td colspan="6" align="left">提示信息：点击“提交注册申请”后直接用A4纸型打印，请在浏览器->打印设置->页面设置 中设置打印的页边距、页眉、页脚等。<br/>请将单位负责人签字和单位盖章的页面报送至依托单位职能部门，待受理部门收悉纸质材料并审核后予以开通。</td></tr>
+            {%endifequal%}
+            <tr>
+                <td align="left">单位名称</td>
+                <td align="left"><input type='text' name="name" id="name"/></td>
+                <td align="left">中文全拼</td>
+                <td align="left"><input type='text' name="unit_code" id="unit_code"/>(如:北京大学，中文全拼写为BeiJingDaXue)</td>
+            </tr>
+            <tr>
+                <td align="left">组织机构代码</td>
+                <td align="left"><input type='text' name="orgcode" id="orgcode"/></td>
+                <td align="left">业务部门</td>
+                <td align="left"><input type='text' name="jobunit" id="jobunit"/></td>
+            </tr>
+            <tr>
+                <td align="left">主管部门</td>
+                <td colspan="3" align="left">
+                    <select name="owner_unit_id">
+                     	{% for item in units %}
+                            {% ifequal  item.level 0 %}
+                                <option value="{{item.pk}}">{{item.name}}</option>
+                            {% endifequal %}
+                        {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td align="left">单位地址</td>
+                <td colspan="3" align="left"><input type='text' name="address" id="address"/></td>
+            </tr>
+            <tr>
+                <td align="left">单位电话（业务部门）</td>
+                <td colspan="3" align="left"><input type='text' name="uphone" id="uphone"/></td>
+            </tr>
+            <tr>
+        </table>
+    {%else%}
+         <input type='hidden' name="jobunit" value="none" id="jobunit"/>
+         <input type='hidden' name="unit_code" value="none" id="unit_code"/>
+         <table width="85%" height="85%">
+            <tr>
+                <td align="left">单位名</td>
+                <td align="left" colspan="3"><input type='text' name="name" id="name"/></td>
+            </tr>
+
+            <tr>
+                <td align="left">依托单位</td>
+                <td colspan="3" align="left">
+                    <select name="owner_unit_id">
+                    			{% for item in units %}
+                                    {% ifequal  item.level 1 %}
+                                        <option value="{{item.pk}}">{{item.name}}</option>
+                                    {% endifequal %}
+                                {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td align="left">单位地址</td>
+                <td colspan="3" align="left"><input type='text' name="address" id="address"/></td>
+            </tr>
+            <tr>
+                <td align="left">单位电话（业务部门）</td>
+                <td colspan="3" align="left"><input type='text' name="uphone" id="uphone"/></td>
+            </tr>
+            <tr>
+        </table>
+    {%endifequal%}
+        <br/><br/>
+        <table width="85%" height="85%">
+            <tr>
+                <td align="left">用户名(管理员)</td>
+                <td colspan="3" align="left"><input type='text' name="aname" id="aname"/></td>
+            </tr>
+            <tr>
+                <td align="left">法人</td>
+                <td colspan="3" align="left"><input type='text' name="faren" id="faren"/></td>
+            </tr>
+            <tr>
+                <td align="left">邮政编码</td>
+                <td colspan="3" align="left"><input type='text' name="zipcode" id="zipcode"/></td>
+            </tr>
+            <tr>
+                <td align="left">密码</td>
+                <td align="left"><input type='password' name="password" id="password"/></td>
+                <td align="left">确认密码</td>
+                <td align="left"><input type='password' name="cpassword" id="cpassword"/></td>
+            </tr>
+        </table>
+        <br/><br/>
+        <table width="85%" height="85%">
+            <tr>
+                <td align="left">联系人</td>
+                <td align="left"><input type='text' name="areal_name" id="areal_name"/></td>
+                <td align="left">性别</td>
+                <td align="left">
+                        <select id="user_sex" name="user_sex">
+                            <option value="1">男</option>
+                            <option value="0">女</option>
+                        </select>
+                </td>
+                <td align="left">邮箱</td>
+                <td align="left"><input type='text' name="email" id="email"/></td>
+            </tr>
+            <tr>
+                <td align="left">办公电话</td>
+                <td align="left"><input type='text' name="phone" id="phone"/></td>
+                <td align="left">手机</td>
+                <td align="left" ><input type='text' name="mobile" id="mobile"/></td>
+                <td align="left">身份证号</td>
+                <td align="left" ><input type='text' name="identitycard" id="identitycard"/></td>
+                    
+            </tr>
+
+            <tr>
+                <td colspan="6" align="left" style="text" style="vertical-align:top;">
+                    验证码<img src="/login/code/" onclick="newcode(this)"/>
+                <input class="text-field" id="user_session_code" name="code" type="text" style="width: 50px;vertical-align: top;"/>
+                </td>
+            </tr>
+            <tr><td colspan="6" align="left" height="">签字<br/><br/><br/>盖章<br/><br/><br/><br/><br/><br/></td></tr>
+            <tr><td colspan="6" align="right"><input type="submit" value="提交注册申请" style="width:200px;height:35px"/> </td></tr>
+     
+        </table>
+        <br/><br/>
+        </form>
+</center>
+</body>
+</html>

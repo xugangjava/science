@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	<title>用户注册 -国家民委项目申报系统</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+	<link href="/static/login/Login.css" media="screen" rel="stylesheet" type="text/css">
+    <script type="text/javascript">
+
+        function onSubmit () {
+        	var name=document.getElementById("name").value;
+    	  	var code=document.getElementById('user_session_code').value;
+        	if(!code){alert('请输入验证码!');return false;}
+        	if(!name){alert("用户名不能为空!");return false;}
+        	var password=document.getElementById("password").value;
+        	if(!password){alert("密码不能为空!");return false;}
+        	var cpassword=document.getElementById("cpassword").value;
+        	if(!cpassword){alert("确认密码不能为空!");return false;}
+
+        	var phone=document.getElementById("phone").value;
+        	if(!phone){alert("电话不能为空!");return false;}
+        	var mobile=document.getElementById("mobile").value;
+        	if(!mobile){alert("手机不能为空!");return false;}
+        	var studycode=document.getElementById("studycode").value;
+        	if(!studycode){alert("学科代号不能为空!");return false;}
+        	if(cpassword!=password){alert("密码确认不一致!");return false;}
+
+        	return true;
+        }
+
+
+
+        var units=[];
+		{% for item in units %}
+			var pid='{{item.parent_unit_id}}';
+			if(pid=='None')pid=0;
+			else pid=parseInt(pid);
+	    	units.push({
+	    		id:{{item.pk}},
+	    		name:'{{item.name}}',
+	    		level:{{item.level}},
+	    		pid:pid
+	    	});
+	    {% endfor %}
+
+	    function getUnitsByLevel(level){
+	    	var r=[];
+	    	for (var i = units.length - 1; i >= 0; i--) {
+	    		if(units[i].level!=level)continue;
+	    		r.push(units[i]);
+	    	};
+	    	return r;
+	    }
+
+	    function getUnitsById(id){
+	    	var r=[];
+	    	for (var i = units.length - 1; i >= 0; i--) {
+	    		if(units[i].id!=id)continue;
+	    		r.push(units[i]);
+	    	};
+	    	return r;
+	    }
+
+	    function getChildUnits(pid){
+	    	var r=[];
+	    	for (var i = units.length - 1; i >= 0; i--) {
+	    		if(units[i].pid!=pid)continue;
+	    		r.push(units[i]);
+	    	};
+	    	return r;
+	    }
+
+	    function onUnitChangeUnit1(){
+	    	var value=document.getElementById('user_unit_1').value;
+	    	var units_2=getChildUnits(value);
+	    	var sel_unit2=document.getElementById('user_unit_2');
+	    	sel_unit2.options.length=0;  
+	    	sel_unit2.options.add(new Option("无","0"));
+	    	for (var i = units_2.length - 1; i >= 0; i--) {
+	    		sel_unit2.options.add(new Option(units_2[i].name,units_2[i].id));
+	    	};
+	    }
+	    
+
+	    function onUnitChangeUnit2(){
+	    	var value=document.getElementById('user_unit_2').value;
+	    	var sel_unit3=document.getElementById('user_unit_3');
+	    	sel_unit3.options.length=0;
+	    	sel_unit3.options.add(new Option("无","0"));
+	    	if(value!=0){
+	    		var units_3=getChildUnits(value);
+		    	for (var i = units_3.length - 1; i >= 0; i--) {
+	    			sel_unit3.options.add(new Option(units_3[i].name,units_3[i].id));
+	    		};
+	    	}
+	    }
+
+
+        function onLoad(){
+        	onUnitChangeUnit1();
+        }
+		var totalremainTime = 4;  
+		function remainTime(){  
+		    if(totalremainTime==0){  
+		        location.href='/';  
+		    }  
+		    document.getElementById('endtime').innerHTML=totalremainTime--;  
+		    setTimeout("remainTime()",1000);  
+		}  
+		window.history.forward(1);
+    </script>
+</head>
+{% if not message %}
+<body class="box" onload="onLoad()">
+{% else %}
+<body class="box" onload="remainTime()">
+{% endif%}
+	<div id="container" style="max-width: 480px">
+		<span id="_top"></span>
+<div id="header" class="group"> 
+	<h2 id="logo">
+		<a href="#" data-skip-pjax="true">
+			<span class="title">国家民委项目申报系统</span>
+</a>	</h2> 
+	<div id="account-nav"> 
+			<p>用户注册</p>
+	</div> 
+</div> 
+<div id="content">
+	{% if not message %}
+	<form accept-charset="UTF-8" action="/user/add/register/"	
+	 onsubmit="return onSubmit()" 
+	 class="new_user_session" id="new_user_session" method="post">
+	 <div style="margin:0;padding:0;display:inline">
+	</div>
+
+	  <div class="field text-field">
+	    <label for="user_session_login">用户名</label><br>
+	    <input class="text-field" id="name" name="name" size="30" type="text">
+	  </div>
+	  <div class="field text-field">
+	    <label >密 码</label><br>
+	    <input class="text-field" id="password" name="password" size="30" type="password">
+	  </div>
+       <div class="field text-field">
+	    <label >确认密 码</label><br>
+	    <input class="text-field" id="cpassword" size="30" type="password">
+	  </div>
+	  <div class="field text-field">
+	    <label >性别</label><br/>
+	    <select id="user_sex" name="user_sex">
+	    	<option value="1">男</option>
+	    	<option value="0">女</option>
+	    </select>
+	  </div>
+	  <div class="field text-field">
+	    <label >角色</label><br>
+	    <select id="user_role" name="user_role" >
+	    	{% for item in roles %}
+	    	<option value="{{item.pk}}">{{item.name}}</option>
+	    	{% endfor %}
+	    </select>
+	  </div>
+  	  <div class="field text-field">
+	    <label >单位</label><br>
+	    <select id="user_unit_1" 
+	    	name="user_unit_1" 
+	    	width="200px" 
+	    	onchange="onUnitChangeUnit1()">
+			{% for item in units %}
+				{% ifequal  item.level 0 %}
+					<option value="{{item.pk}}">{{item.name}}</option>
+				{% endifequal %}
+	    	{% endfor %}
+	    </select>
+	    <br/>
+	    <br/>
+	    <label >二级单位</label><br>
+	    <select id="user_unit_2" 
+	    	name="user_unit_2" 
+	    	style="width:100px"
+	    	onchange="onUnitChangeUnit2()">
+	    	<option value="0">无</option>
+	    </select>
+	    <br/>
+	    <br/>
+	    <label >三级单位</label><br>
+	    <select id="user_unit_3" style="width:100px"
+
+	    	name="user_unit_3" >
+	    	<option value="0">无</option>
+	    </select>
+	  </div>
+     <div class="field text-field">
+	    <label >邮箱</label><br>
+	    <input class="text-field" id="email" name="email"  size="30" type="text">
+	  </div>
+	  <div class="field text-field">
+	    <label >身份证</label><br>
+	    <input class="text-field" id="identitycard" name="identitycard"  size="30" type="text">
+	  </div>
+      <div class="field text-field">
+	    <label >电话</label><br>
+	    <input class="text-field" id="phone" name="phone"  size="30" type="text">
+	  </div>
+ 	  <div class="field text-field">
+	    <label >手机</label><br>
+	    <input class="text-field" id="mobile" name="mobile" size="30" type="text">
+	  </div>
+	   <div class="field text-field">
+            <label for="user_session_password">验证码</label><br>
+        
+            <input 
+            class="text-field" id="user_session_code"
+            name="code"  type="text" 
+            style="width: 50px;vertical-align: top;"/>
+                <img src="/login/code/" onclick="newcode(this)"/>
+          
+        </div>
+
+	  <div class="actions">
+	    <input class="button" name="commit" type="submit" value="注册账号"  />
+	   </div>
+	</form>
+	{%else%}
+	<div class="flash error" >
+	     {{message}}
+  	</div>
+  	<br/>
+  	<div class="flash error">系统将会在<strong id="endtime"></strong>秒后跳转到登录页！</div>
+	{%endif%}
+</div>
+<div class="addon-content">
+	
+</div>
+<div id="footer-container">
+	<div id="footer" class="group">
+		<p>© 2012-2013 国家民委<br></p>
+	</div>
+</div>
+	</div>
+</body></html>

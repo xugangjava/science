@@ -6,7 +6,7 @@ from django.db import models, transaction
 from django.http import HttpResponse
 from science import settings
 from science.settings import MEDIA_ROOT
-from tools.const import UnitLevel, Const, StatusProject, ConvertStatus, StatusConvert, UnitNo, ProjectArea
+from tools.const import UnitLevel, Const, StatusProject, ConvertStatus, StatusConvert, UnitNo, ProjectArea, StatusApprove
 from tools.helper import  Guid, TimeNow, YMD
 from core.word_templates import WordTemplates
 
@@ -29,7 +29,7 @@ class ProjectType(models.Model):
 	waring_day=models.IntegerField(verbose_name='预警项目',default=20)
 	allow_apply= models.BooleanField(
 		verbose_name='是否允许申报',
-		choices=((True, '允许'), (False, '不允许')), default=True)
+		choices=((True, '允许'), (False, '不允许')), default=1)
 	max_project_num=models.IntegerField(verbose_name='最大项目数量',default=0)
 	#重载meta模块,修改Admin后台中显示的名称
 	class Meta:
@@ -59,13 +59,15 @@ class Unit(models.Model):
 	apply_endtime=models.DateTimeField(verbose_name='申报结束时间',default=datetime.now, blank=True)
 	no= models.CharField(verbose_name='单位编号', max_length=25,default='')
 
-
+	faren= models.CharField(verbose_name='法人', max_length=50,default='')
+	zipcode= models.CharField(verbose_name='邮政编码', max_length=50,default='')
 
 	class Meta:
 		verbose_name = '单位'
 		verbose_name_plural = '单位列表'
 
 	def save(self, force_insert=False, force_update=False, using=None):
+
 		if self.parent_unit is None:
 			self.level=0
 		else:
@@ -93,14 +95,15 @@ class Unit(models.Model):
 class UnitLimitProjectType(models.Model):
 	unit = models.ForeignKey(Unit, verbose_name='所属单位', related_name='+',default=0)
 	project_type=models.ForeignKey(ProjectType, verbose_name='项目类型', related_name='+',default=0)
+	max_project_num=models.IntegerField(verbose_name='最大申请数目',default=0)
 
-from django.core.cache import cache
 class User(models.Model):
 	name = models.CharField(verbose_name='用户名', max_length=25)
 	real_name = models.CharField(verbose_name='真实姓名', max_length=25)
 	password = models.CharField(verbose_name='密码', max_length=50)
 
 	email=models.CharField(verbose_name='邮件', max_length=50,default='')
+	identitycard=models.CharField(verbose_name='身份证', max_length=50,default='')
 
 	job_admin_name= models.CharField(verbose_name='行政职务', max_length=25,default='')
 	job_name= models.CharField(verbose_name='专业职务', max_length=25,default='')
@@ -112,7 +115,7 @@ class User(models.Model):
 
 	#相当于varchar字符类型
 	sex = models.BooleanField(verbose_name='性别',
-		choices=((False, "女"), (True, "男")), default=True)
+		choices=((False, "女"), (True, "男")), default=1)
 	phone = models.CharField(max_length=25, verbose_name='电话')
 	mobile = models.CharField(max_length=25, verbose_name='手机')
 	unit = models.ForeignKey(Unit, verbose_name='所属单位', related_name='+',default=0)
@@ -128,6 +131,9 @@ class User(models.Model):
 
 	last_activity_ip = models.CharField(max_length=25, verbose_name='登录ip地址',default='')
 	last_activity_date = models.DateTimeField(default = datetime(1950, 1, 1))
+
+	orgcode = models.CharField(max_length=50, verbose_name='组织机构代码',default='')
+	jobunit = models.CharField(max_length=50, verbose_name='业务部门',default='')
 
 	def get_client_ip(self,request):
 		x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -182,7 +188,7 @@ class Message(models.Model):
 	sender_real_name=models.CharField(verbose_name='发送人姓名', max_length=50,default='')
 
 	send_time=models.DateTimeField(verbose_name='发送时间',default=datetime.now, blank=True)
-	is_read= models.BooleanField(choices=((True, '已读'), (False, '未读')), default=False)
+	is_read= models.BooleanField(choices=((True, '已读'), (False, '未读')), default=0)
 
 
 	def CopyMessage(self):
@@ -272,7 +278,7 @@ class Project(models.Model):
 
 
 	expert=models.ForeignKey(User, verbose_name='专家评审', related_name='+',default=0)
-	expert_success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=False)
+	expert_success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=0)
 	expert_approve_time=models.DateTimeField(verbose_name='专家评审时间',default=datetime.now, blank=True)
 	expert_opinion= models.TextField(max_length=200, verbose_name='专家意见',default='')
 
@@ -346,9 +352,7 @@ class ProjectApply(models.Model):
 	unit=models.ForeignKey(Unit, verbose_name='所属单位', related_name='+',default=0)
 
 	#expert=models.ForeignKey(User, verbose_name='专家评审', related_name='+',default=0)
-	expert_success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=False)
-	expert_approve_time=models.DateTimeField(verbose_name='专家评审时间',default=datetime.now, blank=True)
-	expert_opinion= models.TextField(max_length=200, verbose_name='专家意见',default='')
+
 
 	total_money=models.IntegerField( verbose_name='经费(万元)',default=0)
 	book_money=models.IntegerField( verbose_name='资料费',default=0)
@@ -383,7 +387,27 @@ class ProjectApply(models.Model):
 	project_id=models.IntegerField( verbose_name='项目ID',default=0)
 	project_comple_time=models.DateTimeField(verbose_name='项目完成时间', default=datetime.now, blank=True)
 
-	expert_percent=models.IntegerField(verbose_name='专家评分',default=0)
+	expert_percent=models.CharField(verbose_name='专家平均分',default='0',max_length=25)
+	expert_names=models.CharField(verbose_name='送审专家', max_length=500,default='')
+
+
+	expert_post_num=models.IntegerField(verbose_name='送审',default=0)
+	expert_recv_num=models.IntegerField(verbose_name='接收',default=0)
+
+	expert_success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=0)
+	expert_approve_time=models.DateTimeField(verbose_name='专家评审时间',default=datetime.now, blank=True)
+	expert_opinion= models.TextField(max_length=200, verbose_name='专家意见',default='')
+	admin_support_result=models.CharField(verbose_name='资助选项', max_length=50,default='')
+
+	def RePercent(self,expert_percent):
+		new_percetn=(float(self.expert_percent)*self.expert_post_num
+		                     +float(expert_percent))/(self.expert_post_num+1)
+		new_percetn=round(new_percetn,3)
+		self.expert_percent="%.3f" % new_percetn
+		self.expert_post_num+=1
+		if self.expert_post_num>=self.expert_recv_num:
+			self.status=StatusApprove.WAIT_ADMIN_0
+		self.save()
 
 	class Meta:
 		verbose_name = '项目申请'
@@ -398,18 +422,21 @@ class ProjectApply(models.Model):
 			unit=self.applicant.unit
 			count=Project.objects.filter(applicant_time__year=year).count()
 			area=ProjectArea.get(self.project_area_name,'')
-			new_no='MW'+ area +'%s%s%03d' % (str(year)[2:], unit.no,count+1)
+			#部门编号大写
+			uno= ''.join([i for i in unit.no if i.isupper()])
+			new_no='MW'+ area +'%s%s%03d' % (str(year)[2:], uno,count+1)
 			return new_no
 		return tran()
 
 	@staticmethod
-	def RawUploadRrojectApplyNO(user):
+	def RawUploadRrojectApplyNO(unit):
 		@transaction.commit_on_success
 		def tran():
 			year=datetime.now().year
-			unit=user.unit
 			count=ProjectApply.objects.filter(applicant_time__year=year).count()
-			new_no='AMW' +'%s%s%03d' % (str(year)[2:],unit.no,count+1)
+			#部门编号大写
+			uno= ''.join([i for i in unit.no if i.isupper()])
+			new_no='AMW' +'%s%s%03d' % (str(year)[2:],uno,count+1)
 			return new_no
 		return tran()
 
@@ -420,7 +447,9 @@ class ProjectApply(models.Model):
 			unit=self.applicant.unit
 			count=ProjectApply.objects.filter(applicant_time__year=year).count()
 			area=ProjectArea.get(self.project_area_name,'')
-			new_no='AMW' +area+'%s%s%03d' % (str(year)[2:],unit.no,count+1)
+			#部门编号大写
+			uno= ''.join([i for i in unit.no if i.isupper()])
+			new_no='AMW' +area+'%s%s%03d' % (str(year)[2:],uno,count+1)
 			return new_no
 		return tran()
 
@@ -560,7 +589,7 @@ class ProjectRollbackApplyApprove(models.Model):
 	approve=models.ForeignKey(User,verbose_name='单位名',related_name='+',default=0)
 	approvetime = models.DateTimeField(verbose_name='审核时间',default=datetime.now, blank=True)
 	approve_opinion = models.TextField(max_length=200, verbose_name='审核意见内容',default='')
-	success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=False)
+	success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=0)
 	details=models.ForeignKey(ProjectRollbackApply,verbose_name='详情',related_name='+',default=0)
 
 	class Meta:
@@ -574,7 +603,7 @@ class ProjectExChangeApprove(models.Model):
 	approve=models.ForeignKey(User,verbose_name='单位名',related_name='+',default=0)
 	approvetime = models.DateTimeField(verbose_name='审核时间',default=datetime.now, blank=True)
 	approve_opinion = models.TextField(max_length=200, verbose_name='审核意见内容',default='')
-	success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=False)
+	success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=0)
 	details=models.ForeignKey(ProjectExChange,verbose_name='详情',related_name='+',default=0)
 
 	class Meta:
@@ -629,8 +658,13 @@ class ProjectApplyApprove(models.Model):
 	approve=models.ForeignKey(User,verbose_name='审核人',related_name='+',default=0)
 	approvetime = models.DateTimeField(verbose_name='审核时间',default=datetime.now, blank=True)
 	approve_opinion = models.TextField(max_length=200, verbose_name='审核意见内容',default='')
-	success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=False)
+	success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=0)
 	details=models.ForeignKey(ProjectApply,verbose_name='详情',related_name='+',default=0)
+	expert_support=models.CharField(verbose_name='资助选项', max_length=50,default='')
+	expert_percent=models.CharField(verbose_name='专家评分', max_length=50,default='')
+
+	type=models.IntegerField( verbose_name='审批类型',default=0)
+
 
 	class Meta:
 		verbose_name = '项目申请审核'
@@ -685,7 +719,7 @@ class ProjectEndApplyApprove(models.Model):
 	approve=models.ForeignKey(User,verbose_name='审核人',related_name='+',default=0)
 	approvetime = models.DateTimeField(verbose_name='审核时间',default=datetime.now, blank=True)
 	approve_opinion = models.TextField(max_length=200, verbose_name='审核意见内容',default='')
-	success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=False)
+	success = models.BooleanField(choices=((True, '同意'), (False, '不同意')), default=0)
 	details=models.ForeignKey(ProjectEndApply,verbose_name='详情',related_name='+',default=0)
 
 	class Meta:
@@ -731,7 +765,15 @@ class ConvertPDFTask(models.Model):
 class ProjectApplyExpert(models.Model):
 	expert=models.ForeignKey(User,verbose_name='专家', related_name='+',default=0)
 	apply=models.ForeignKey(ProjectApply,verbose_name='项目申请', related_name='+',default=0)
+	approved=models.BooleanField(choices=((True, '已审核'), (False, '未审核')), default=0)
+	expert_support=models.CharField(verbose_name='资助选项', max_length=50,default='')
+	expert_percent=models.CharField(verbose_name='专家评分', max_length=50,default='')
 
+	#new
+	refused=models.IntegerField(default=0,verbose_name='拒绝评审')
+	email_back=models.IntegerField(default=0,verbose_name='邮件回执')
+	email_key=models.CharField(default=Guid,verbose_name='邮件认证KEY',max_length=50)
+	approvetime = models.DateTimeField(verbose_name='评审时间',default=datetime.now, blank=True)
 
 Models = (
 	ProjectEndApply,

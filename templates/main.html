@@ -2,6 +2,66 @@
 {%block scripts%}core/main.js{% endblock %}
 {%block body%}
 <script type="text/javascript">
+    function LoginOut(){
+        window.parent.location.href="/loginout/";
+    }
+    
+    function ShowPersonalInfo(){
+          Ext.Ajax.request({ 
+            url:'/user/details/',
+            method:"post",
+            params:{
+                id:Main.UserID
+            },
+            success:function (response) {
+                var json = Ext.util.JSON.decode(response.responseText);
+                var win=new XG.Form.SimpelPoupForm({
+                    title: '个人信息',
+                    width:400,
+                    height:270,
+                    url:'/user/selfupdate/',
+                    items:[
+                        XG.UserFields.real_name,
+                        XG.UserFields.password,
+                        XG.UserFields.email,
+                        XG.UserFields.sex,
+                        XG.UserFields.phone,
+                        XG.UserFields.mobile
+                    ],
+                    success:function(){
+                        alert('修改成功');
+                    }
+                });
+                win.fill(json);
+                win.show(this);
+            },
+            failure:function (form, action) {
+                if ('result' in action) {
+                    if ('msg' in action.result) {
+                        error(action.result.msg);
+                    }
+                }
+                else {
+                    error('发生异常!');
+                }
+            }
+        });
+    }
+        
+    function GoBackToWelcome(){
+        Main.ClearTab();
+        Main.tab_panel.setActiveTab(Main.welcome_tab);
+    }
+    function showDate(){
+        var aa=new Date();
+        var bb="今天是";
+        bb+=aa.getFullYear()+"年"+(aa.getMonth()+1)+"月"+aa.getDate()+"日  ";
+        bb+="星期"+'日一二三四五六'.charAt(aa.getDay())+" ";
+        bb+=aa.getHours()+"时"+aa.getMinutes()+"分"+aa.getSeconds()+"秒";
+        Ext.get("login_date").dom.innerHTML=bb;
+        setTimeout("showDate()",1000);
+    }
+
     Ext.ns('Main');
     Ext.onReady(function () {
         Ext.QuickTips.init();
@@ -9,6 +69,9 @@
         Main.AuthLevel = '{{user.unit.level}}';
         Main.UserUnitID='{{user.unit_id}}';
         Main.ProjectTypes='{{project_types}}';
+        Main.AdminPhone='{{admin_phone}}';
+        Main.AdminRealName='{{admin_real_name}}';
+
         if(Main.ProjectTypes!='')
         {
             var arry=Main.ProjectTypes.split(';');
@@ -24,8 +87,22 @@
             }
         }
         Main.UserID='{{user.pk}}';
-        Ext.get("head_info").dom.innerHTML =
-        "<h1 style='font-size:21;font-family: sans-serif;'>欢迎<{{user.real_name}}>，您当前的角色为<{{user.role_name}}></h1>";
+        var html='<div class="index_head_top_l"><img src="/static/newcss/images/main_logo.png" /></div>';
+            html+='<div class="index_head_top_r">';
+                html+='<div class="index_head_nav">';
+                    html+='<ul>';
+                        html+='<a href="javascript:ShowPersonalInfo()"><li class="user_info">个人信息</li></a>';
+                        html+='<a href="javascript:GoBackToWelcome()"><li class="go_back">返回首页</li></a>';
+                        html+='<a href="javascript:LoginOut()"><li class="quit">注销</li></a>';
+                    html+='</ul>';
+                html+='</div>';
+            html+='</div>';
+            html+='<div class="index_head_top_t">';
+                html+='<div class="login_userinfo">欢迎<span>[{{user.real_name}}]</span>，您当前的角色为<span>[{{user.role_name}}]</span></div>';
+                html+='<div class="login_date" id="login_date">今天是2013年7月24日 星期三  13:25:45</div>';
+            html+='</div>';
+        Ext.get("index_head").dom.innerHTML =html;
+        showDate();
         Main.ShowApprovesWin=function(config){
             var sel= config.grid.getJsonArr();
             if(sel.length!=1){
@@ -43,7 +120,7 @@
                 closeAction:'close',
                 modal:true,
                 constrain:true,
-                width:640,
+                width:700,
                 height:400,
                 layout:'fit',
                 items:[
@@ -72,22 +149,33 @@
             win.show(this); 
         };
 
-        Main.ShowProjectApplyApproveHistory=function(grid){
+        Main.ShowProjectApplyApproveHistory=function(grid,hiddenExpert){
             Main.ShowApprovesWin({
                 grid:grid,
                 url:'/project/apply/approves/',
                 columes:[
-                    {header:'审核人', dataIndex:'approve__name', flex:1 },
+                    {header:'审核人', dataIndex:'approve__name', flex:1,
+                        renderer:function(value, cellmeta, record, rowIndex, columnIndex, store){
+                            if(hiddenExpert&&record.data['approve__role__name']=='专家'){
+                                return '专家X';
+                            }
+                            return value;
+                        }
+                    },
                     {header:'角色', dataIndex:'approve__role__name', flex:1 },
                     {header:'审核单位', dataIndex:'approve__unit__name', flex:1},
                     {header:'单位级别', dataIndex:'approve__unit__level', flex:1,renderer:XG.Render.UnitLevel},
                     {header:'审核时间', dataIndex:'approvetime', flex:1 },
                     {header:'审核结果', dataIndex:'success', flex:1, renderer:function(value){return value?'通过':'退回'}},
+                    {header:'专家评分', dataIndex:'expert_percent', flex:1 },
+                    {header:'专家资助意见', dataIndex:'expert_support', flex:1 },
                     {dataIndex:'approve_opinion'}
                 ],
                 option:'approve_opinion'
             });
         };
+
+
 
         Main.ShowProjectExchangeApproveHistory=function(grid){
             Main.ShowApprovesWin({
@@ -141,9 +229,6 @@
         };
 
 
-
-
-
     });
 </script>
 {%ifequal user.role.code 'admin'%}
@@ -159,29 +244,38 @@ Ext.onReady(function () {
                 method:'post',  
                 success:function(response,options){
                     var res = Ext.util.JSON.decode(response.responseText);  
-                    var root= Main.tree.getRootNode();
-                    var r=root.childNodes[0];
-                    var childrens=r.childNodes;//项目申请
-                    for (var i = childrens.length - 1; i >= 0; i--) {
-                        var n=childrens[i];
-                        if(n.text.indexOf('项目申请')!=-1)
-                            n.setText('项目申请('+res.apply+')');
-                        else if(n.text.indexOf('项目评审')!=-1)
-                            n.setText('项目评审('+res.apply_ask_expert+')');
-                        else if(n.text.indexOf('项目变更')!=-1)
-                            n.setText('项目变更('+res.exchange+')');
-                        else if(n.text.indexOf('项目结项')!=-1)
-                            n.setText('项目结项('+res.end+')');
-                    }
+                    for (var j = root.childNodes.length - 1; j >= 0; j--) {
+                        var r=root.childNodes[j];
+                        var childrens=r.childNodes;//项目申请
+                        for (var i = childrens.length - 1; i >= 0; i--) {
+                            var n=childrens[i];
+                            if(n.text.indexOf('项目立项')!=-1)
+                                n.setText('项目立项('+res.apply+')');
+                            else if(n.text.indexOf('项目评审')!=-1)
+                                n.setText('项目评审('+res.apply_ask_expert+')');
+                            else if(n.text.indexOf('项目变更')!=-1)
+                                n.setText('项目变更('+res.exchange+')');
+                            else if(n.text.indexOf('项目结项')!=-1)
+                                n.setText('项目结项('+res.end+')');
+                            else if(n.text.indexOf('项目退回')!=-1)
+                                n.setText('项目退回('+res.back+')');
+                            else if(n.text.indexOf('项目审查')!=-1)
+                                n.setText('项目审查('+res.look+')');
+                            else if(n.text.indexOf('用户审核')!=-1)
+                                n.setText('用户审核('+res.user_approve+')');
+                            else if(n.text.indexOf('单位审核')!=-1)
+                                n.setText('单位审核('+res.unit_approve+')');
+                        }
+                    };
                 }
             });
         },
         interval: 3000
     });
-    Main.ShowAdminApprovedWin=function(config){
 
+    Main.ShowAdminApprovedWin=function(config){
         var win=new Ext.Window({
-            title:'历史记录',
+            title:config.text,
             closable:true,
             closeAction:'close',
             modal:true,
@@ -203,7 +297,7 @@ Ext.onReady(function () {
                     showPreview:true,
                     getRowClass : function(record, rowIndex, p, store){
                         if(this.showPreview){
-                            p.body = '<p>审核意见: '+record.data[config.option]+'</p>';
+                            p.body = '<p style="word-wrap:break-word;">审核意见: '+record.data[config.option]+'</p>';
                             return 'x-grid3-row-expanded';
                         }
                         return 'x-grid3-row-collapsed';
@@ -214,10 +308,12 @@ Ext.onReady(function () {
         });
         win.show(this); 
     };
-    Main.ShowAdminProjectApplyApproveHistory=function(grid,pass,build){
+
+    Main.ShowAdminProjectApplyApproveHistory=function(grid,pass,build,text){
         if(null==pass)pass=-1;
         if(null==build)build=-1;
         var initConfig={
+            text:text,
             grid:grid,
             url:'/project/admin/apply/approves/?pass='+pass+'&build='+build,
             columes:[
@@ -244,9 +340,10 @@ Ext.onReady(function () {
         Main.ShowAdminApprovedWin(initConfig);
     };
 
-    Main.ShowAdminProjectExchangeApproveHistory=function(grid,pass){
+    Main.ShowAdminProjectExchangeApproveHistory=function(grid,pass,text){
         if(pass==null)pass=-1;
         Main.ShowAdminApprovedWin({
+            text:text,
             grid:grid,
             url:'/project/admin/exchange/approves/?pass='+pass,
             columes:[
@@ -262,9 +359,10 @@ Ext.onReady(function () {
         });
     };
 
-    Main.ShowAdminProjectEndApproveHistroy=function(grid,pass){
+    Main.ShowAdminProjectEndApproveHistroy=function(grid,pass,text){
         if(pass==null)pass=-1;
         Main.ShowAdminApprovedWin({
+            text:text,
             grid:grid,
             url:'/project/admin/end/approves/?pass='+pass,
             columes:[
@@ -280,29 +378,47 @@ Ext.onReady(function () {
         });
     };
 
-    Main.ShowAdminProjectRollbackApproveHistroy=function(grid){
-        Main.ShowAdminApprovedWin({
-            grid:grid,
-            url:'/project/admin/back/approves/',
-            columes:[
-                {header:'项目名称',dataIndex:'details__project__name',flex:1},
-                {header:'项目编号',dataIndex:'details__project__no',flex:1},
-                {header:'审核单位', dataIndex:'approve__unit__name', flex:1},
-                {header:'单位级别', dataIndex:'approve__unit__level', flex:1,renderer:XG.Render.UnitLevel},
-                {header:'审核时间', dataIndex:'approvetime', flex:1 },
-                {header:'审核结果', dataIndex:'success', flex:1, renderer:function(value){return value?'通过':'退回'}},
-                {dataIndex:'approve_opinion'}
-            ],
-            option:'approve_opinion'
+
+    Main.ShowAdminSendApproveHistroy=function(config){
+        var win=new Ext.Window({
+            title:config.text,
+            closable:true,
+            closeAction:'close',
+            modal:true,
+            constrain:true,
+            width:700,
+            height:400,
+            layout:'fit',
+            items:[
+            {
+                xtype:'basegrid',
+                url:config.url,
+                notbar:true,
+                nocheck:true,
+                columes:config.columes,
+                tbar:config.tbar,
+                viewConfig: {
+                    forceFit:true,
+                    enableRowBody:true,
+                    showPreview:true,
+                    getRowClass : function(record, rowIndex, p, store){
+                        if(this.showPreview){
+                            p.body = '<p>送审专家: '+record.data['expert_names']+'</p>';
+                            return 'x-grid3-row-expanded';
+                        }
+                        return 'x-grid3-row-collapsed';
+                    }
+                }
+            }]
         });
+        win.show(this);
     };
-
-
 
     node = {
         text:'项目审核',
         expanded:true,
         leaf:false,
+        iconCls:'Monitor',
         children:[]
     };
 
@@ -311,6 +427,7 @@ Ext.onReady(function () {
         node.children.push({
             text:'项目审查',
             leaf:true,
+            iconCls:'Monitorkey',
             list:{
                 id:'admin_project_option_gird',
                 url:"/project/apply/list/",
@@ -346,32 +463,6 @@ Ext.onReady(function () {
                         items:[{xtype:'hidden',name:'wait_admin_look',value:1}]
                     },
                     handlers:[
-                        // "学科代号",
-                        // {
-                        //     xtype:'textfield',
-                        //     id:'tbar_study_type_name'
-                        // },
-                        // {
-                        //     text:'学科分类',
-                        //     iconCls:'Applicationviewlist',
-                        //     handler:function(){
-                        //         var txt=Ext.getCmp('tbar_study_type_name');
-                        //         txt=txt.getValue();
-                        //         if(''==txt){
-                        //             alert('请填写学科代号!');
-                        //             return;
-                        //         }
-                        //         var grid=Ext.getCmp('admin_project_option_gird');
-                        //         grid.getStore().load({
-                        //             params:{
-                        //                 study_type_name:txt,
-                        //                 start:0,
-                        //                 limit:20
-                        //             }
-                        //         });
-                        //     }
-                        // },
-          
                         {
                             text:'查看审核历史记录',
                             iconCls:'Bookopen',
@@ -385,7 +476,7 @@ Ext.onReady(function () {
                             iconCls:'Bookkey',
                             handler:function(){
                                 var grid=Ext.getCmp('admin_project_option_gird');
-                                Main.ShowAdminProjectApplyApproveHistory(grid,0);
+                                Main.ShowAdminProjectApplyApproveHistory(grid,0,null,this.text);
                             }
                         },
                         {
@@ -393,10 +484,9 @@ Ext.onReady(function () {
                             iconCls:'Bookprevious',
                             handler:function(){
                                 var grid=Ext.getCmp('admin_project_option_gird');
-                                Main.ShowAdminProjectApplyApproveHistory(grid,1);
+                                Main.ShowAdminProjectApplyApproveHistory(grid,1,null,this.text);
                             }
                         }
-
                     ]
                 },
                 listeners:{
@@ -414,6 +504,7 @@ Ext.onReady(function () {
         node.children.push({
             text:'项目评审',
             leaf:true,
+            iconCls:'Monitorlink',
             list:{
                 id:'admin_project_option_gird',
                 url:"/project/apply/list/",
@@ -431,47 +522,32 @@ Ext.onReady(function () {
                     {header:'申请时间', dataIndex:'applicant_time', flex:1 },
                     {header:'审核状态', dataIndex:'status', flex:1, renderer:XG.Render.ApproveStatus},
                     {header:'学科分类', dataIndex:'study_type_name', flex:1},
+                    {header:'接收/送审',flex:1,
+                    renderer:function(value, cellmeta, record, rowIndex, columnIndex, store){
+                        return record.data['expert_post_num']+'/'+record.data['expert_recv_num']
+                    }},
+                    {header:'平均分', dataIndex:'expert_percent', flex:1,
+                        renderer:function(value){
+                            return '<img src="/static/icons/zoom.png"/>'+value;
+                        }
+                    },
                     {header:'PDF',flex:1,dataIndex:'pk', width:50,
                         renderer:function(value){
-                           return '<img src="/static/icons/page_white_acrobat.png"/>';
+                            return '<img src="/static/icons/page_white_acrobat.png"/>';
                         }.createDelegate(this)
-                    }
+                    },
+                    {dataIndex:'expert_post_num'},
+                    {dataIndex:'expert_recv_num'}
                 ],
                 tbar:{
                     project_apply_type_combo:{p_types:Main.ProjectTypes},
                     handlers:[
-
-                        // "学科代号",
-                        // {
-                        //     xtype:'textfield',
-                        //     id:'tbar_study_type_name'
-                        // },
-                        // {
-                        //     text:'学科分类',
-                        //     iconCls:'Applicationviewlist',
-                        //     handler:function(){
-                        //         var txt=Ext.getCmp('tbar_study_type_name');
-                        //         txt=txt.getValue();
-                        //         if(''==txt){
-                        //             alert('请填写学科代号!');
-                        //             return;
-                        //         }
-                        //         var grid=Ext.getCmp('admin_project_option_gird');
-                        //         grid.getStore().load({
-                        //             params:{
-                        //                 study_type_name:txt,
-                        //                 start:0,
-                        //                 limit:20
-                        //             }
-                        //         });
-                        //     }
-                        // },
                         {
                             text:'选择专家评审',
                             iconCls:'Useralert',
                             handler:function(){
                                 var grid=Ext.getCmp('admin_project_option_gird');
-                                var r=grid.getStore().data.items;
+                                var r=grid.getJsonArr();
                                 if(r.length<1){
                                     alert('未选中任何项目！');
                                     return;
@@ -532,6 +608,7 @@ Ext.onReady(function () {
                                             }
                                             var idArr = grid.getIdArr();
                                             win.close();
+                                            mask("正在发送保存并发送邮件提示!<br/>请稍等......");
                                             Ext.Ajax.request({
                                                     url:'/expert/set/',
                                                     method:"post",
@@ -540,11 +617,14 @@ Ext.onReady(function () {
                                                         expert_ids:expert_ids
                                                     },
                                                     success:function () {
+                                                        unmask();
                                                         win.close();
                                                         grid.getStore().load();
                                                         alert('设置成功!等待专家评审');
+                                                       
                                                     },
                                                     failure:function (form, action) {
+                                                        unmask();
                                                         win.close();
                                                         if ('result' in action) {
                                                             if ('msg' in action.result) {
@@ -574,17 +654,75 @@ Ext.onReady(function () {
                             text:'送审项目',
                             iconCls:'Bookprevious',
                             handler:function(){
+
+                                Main.ShowAdminSendApproveHistroy({
+                                    text:this.text,
+                                    url:'/project/setexpert/apply/list/',
+                                    columes:[
+                                        {
+                                            header:'项目名称', 
+                                            dataIndex:'project_name', 
+                                            flex:1,
+                                            renderer:function(value){
+                                               return '<img src="/static/icons/zoom.png"/>'+value;
+                                            }.createDelegate(this)
+                                        },
+                                        {header:'项目类型', dataIndex:'project_type__name', flex:1 },
+                                        {header:'项目编号', dataIndex:'project_no', flex:1 },
+                                        {header:'申请时间', dataIndex:'applicant_time', flex:1 },
+                                        {header:'审核状态', dataIndex:'status', flex:1, renderer:XG.Render.ApproveStatus},
+                                        {header:'学科分类', dataIndex:'study_type_name', flex:1},
+                                        {header:'PDF',flex:1,dataIndex:'pk', width:50,
+                                            renderer:function(value){
+                                               return '<img src="/static/icons/page_white_acrobat.png"/>';
+                                            }.createDelegate(this)
+                                        },
+                                        {dataIndex:'expert_names'}
+                                    ],
+                                    listeners:{
+                                        cellclick:DefaultCellHanlder({
+                                            applyPdfIdx:7,
+                                            applyIdx:1
+                                        })
+                                    }
+                                });
+                            }
+                        },{
+                            text:'结束评审',
+                            iconCls:'Useralert',
+                            handler:function(){
                                 var grid=Ext.getCmp('admin_project_option_gird');
-                                Main.ShowAdminProjectApplyApproveHistory(grid);
+                                var idArr=grid.getIdArr();
+                                if(idArr.length==0)return;
+                 
+                                Ext.Ajax.request({
+                                    url:'/project/apply/endexperttalk/',
+                                    params:{
+                                        ids:idArr.join()
+                                    },
+                                    success:function (response) {
+                                        alert('项目已经结束审核,进入立项阶段!');
+                                        grid.getStore().reload();
+                                    },
+                                    failure:function (form, action) {
+                                        if ('result' in action){
+                                            if ('msg' in action.result){
+                                                error(action.result.msg);
+                                            }
+                                        }else{
+                                            error('发生异常!');
+                                        }
+                                    }
+                                });
                             }
                         }
-
                     ]
                 },
                 listeners:{
                     cellclick:DefaultCellHanlder({
-                        applyPdfIdx:7,
-                        applyIdx:1
+                        applyPdfIdx:9,
+                        applyIdx:1,
+                        showExpertIdx:8
                     })
                 },
                 baseParams:{
@@ -597,6 +735,7 @@ Ext.onReady(function () {
     node.children.push({
         text:'项目立项',
         leaf:true,
+        iconCls:'Monitoradd',
         list:{
             id:'admin_project_apply_list',
             url:"/project/apply/list/",
@@ -614,6 +753,8 @@ Ext.onReady(function () {
                 {header:'申请时间', dataIndex:'applicant_time', flex:1 },
                 {header:'审核状态', dataIndex:'status', flex:1, renderer:XG.Render.ApproveStatus},
                 {header:'学科分类', dataIndex:'study_type_name', flex:1},
+                {header:'专家评分', dataIndex:'expert_percent', flex:1},
+                
                 {header:'PDF',flex:1,dataIndex:'pk', width:50,
                     renderer:function(value){
                        return '<img src="/static/icons/page_white_acrobat.png"/>';
@@ -632,7 +773,21 @@ Ext.onReady(function () {
                     title:"审核立项申请",
                     url:'/project/apply/approve/', 
                     iconCls:'Useralert',
-                    items:[{xtype:'hidden',name:'wait_admin_look',value:0}]
+                    width:425,
+                    height:260,
+                    argreeText:'同意立项',
+                    items:[
+                        {xtype:'hidden',name:'wait_admin_look',value:0},
+                        {
+                            fieldLabel:'资助结果',
+                            xtype:'localcombo',
+                            name:'admin_support',
+                            hidden:Main.AuthLevel!=0,
+                            data:[
+                            ['自筹','自筹'],
+                            ['资助','资助']]
+                        }
+                    ]
                 },
                 handlers:[
                     {
@@ -648,7 +803,7 @@ Ext.onReady(function () {
                         iconCls:'Bookkey',
                         handler:function(){
                             var grid=Ext.getCmp('admin_project_apply_list');
-                            Main.ShowAdminProjectApplyApproveHistory(grid,-1,1);
+                            Main.ShowAdminProjectApplyApproveHistory(grid,-1,1,this.text);
                         }
                     },
                     {
@@ -656,7 +811,7 @@ Ext.onReady(function () {
                         iconCls:'Bookprevious',
                         handler:function(){
                             var grid=Ext.getCmp('admin_project_apply_list');
-                            Main.ShowAdminProjectApplyApproveHistory(grid,-1,0);
+                            Main.ShowAdminProjectApplyApproveHistory(grid,-1,0,this.text);
                         }
                     }
                 ]
@@ -671,6 +826,7 @@ Ext.onReady(function () {
     node.children.push({
         text:'项目变更',
         leaf:true,
+        iconCls:'Monitoredit',
         list:{
             id:'admin_project_exchange_gird',
             url:"/project/exchange/list/",
@@ -700,7 +856,7 @@ Ext.onReady(function () {
                         iconCls:'Bookkey',
                         handler:function(){
                             var grid=Ext.getCmp('admin_project_exchange_gird');
-                            Main.ShowAdminProjectExchangeApproveHistory(grid,1);
+                            Main.ShowAdminProjectExchangeApproveHistory(grid,1,this.text);
                         }
                     },
                     {
@@ -708,7 +864,7 @@ Ext.onReady(function () {
                         iconCls:'Bookprevious',
                         handler:function(){
                             var grid=Ext.getCmp('admin_project_exchange_gird');
-                            Main.ShowAdminProjectExchangeApproveHistory(grid,0);
+                            Main.ShowAdminProjectExchangeApproveHistory(grid,0,this.text);
                         }
                     }
                 ]
@@ -734,6 +890,7 @@ Ext.onReady(function () {
         node.children.push({
         text:'项目退回',
         leaf:true,
+        iconCls:'Monitorlightning',
         list:{
                 id:'admin_project_rollback_gird',
                 url:"/project/rollback/list/",
@@ -791,6 +948,7 @@ Ext.onReady(function () {
     node.children.push({
         text:'项目结项',
         leaf:true,
+        iconCls:'Monitorgo',
         list:{
             url:"/project/end/list/",
             id:'admin_project_end_gird',
@@ -838,7 +996,7 @@ Ext.onReady(function () {
                         iconCls:'Bookkey',
                         handler:function(){
                             var grid=Ext.getCmp('admin_project_end_gird');
-                            Main.ShowAdminProjectEndApproveHistroy(grid,1);
+                            Main.ShowAdminProjectEndApproveHistroy(grid,1,this.text);
                         }
                     },
                     {
@@ -846,7 +1004,7 @@ Ext.onReady(function () {
                         iconCls:'Bookprevious',
                         handler:function(){
                             var grid=Ext.getCmp('admin_project_end_gird');
-                            Main.ShowAdminProjectEndApproveHistroy(grid,0);
+                            Main.ShowAdminProjectEndApproveHistroy(grid,0,this.text);
                         }
                     }
                 ]
@@ -859,11 +1017,13 @@ Ext.onReady(function () {
         text:'查询统计',
         expanded:true,
         leaf:false,
+        iconCls:'Chartbar',
         children:[]
     };
     node.children.push({
         text:'项目检索',
         leaf:true,
+        iconCls:'Serverchart',
         list:{
             url:"/project/search/",
             nocheck:true,
@@ -909,7 +1069,7 @@ Ext.onReady(function () {
                     ['name','项目名称'],
                     ['applicant__name','申请人姓名'],
                     ['applicant_time','项目申请时间'],
-                    ['unit__name','项目所属部门']],
+                    ['unit__name','项目所属单位']],
                     listeners:{
                         select:function(box, record, index){
                             if(index==2){
@@ -999,6 +1159,13 @@ Ext.onReady(function () {
                         });
 
                     }
+                },
+                {
+                    text:'导出Excel',
+                    iconCls:'Pagewhiteexcel',
+                    handler:function(){
+                        window.open('/project/admin/project/search/xls/export/');
+                    }
                 }
             ],
             listeners:{
@@ -1014,6 +1181,7 @@ Ext.onReady(function () {
     node.children.push({
         text:'项目统计',
         leaf:true,
+        iconCls:'Chartpie',
         view:{
             xtype:'panel',
             layout:'fit',
@@ -1061,7 +1229,7 @@ Ext.onReady(function () {
                     ['name','项目名称'],
                     ['applicant__name','申请人姓名'],
                     ['applicant_time','项目申请时间'],
-                    ['unit__name','项目所属部门']],
+                    ['unit__name','项目所属单位']],
                     listeners:{
                         select:function(box, record, index){
                             if(index==2){
@@ -1139,11 +1307,7 @@ Ext.onReady(function () {
                                     season: '退回项目数量',
                                     total: json.postback
                                 }];
-                                // chart.store.data.items[0].json.total=json.normal;
-                                // chart.store.data.items[1].json.total=json.lazy;
-                                // chart.store.data.items[2].json.total=json.undo;
-                                // chart.store.data.items[3].json.total=json.postback;
-                                // chart.refresh()
+
                                 chart.store.loadData(data);
 
                             },
@@ -1169,19 +1333,23 @@ Ext.onReady(function () {
         text:'用户管理',
         expanded:true,
         leaf:false,
+        iconCls:'Driveuser',
         children:[]
     };
+
+
     node.children.push({
         leaf:true,
         text:'用户列表',
+        iconCls:'Group',
         list:{
             url:'/user/list/',
             columes:[
                 {header:'用户名', dataIndex:'name', flex:1},
                 {header:'姓名', dataIndex:'real_name', flex:1},
-                {header:'部门', dataIndex:'unit__name', flex:1},
+                {header:'单位', dataIndex:'unit__name', flex:1},
                 {dataIndex:'unit__level'},
-                {header:'上级部门', dataIndex:'unit__parent_unit__name', flex:1},
+                {header:'上级单位', dataIndex:'unit__parent_unit__name', flex:1},
                 {header:'角色', dataIndex:'role__name', flex:1, renderer:function (value, p, record) {
                     return  XG.Render.UnitLevel(record.get('unit__level')) + value;
                 }}],
@@ -1193,8 +1361,8 @@ Ext.onReady(function () {
         form:{
             url:"/user/add/",
             title:"添加用户",
-            width:400,
-            height:380,
+            width:500,
+            height:420,
             items:[
                 XG.UserFields.regname,
                 XG.UserFields.password,
@@ -1203,7 +1371,10 @@ Ext.onReady(function () {
                     fieldLabel:'所在单位',
                     name:'unit_id',
                     id:'add_user_unit_combo',
-                    url:'/unit/combo/',
+                    url:'/unit/combo/?show_parent=1',
+                    baseParams:{
+                        show_parent:1
+                    },
                     xtype:'remotecombo',
                     listeners:{
                         select:function(box, record, index){
@@ -1232,8 +1403,13 @@ Ext.onReady(function () {
                     id:'add_user_role_combo',
                     listeners:{
                         select:function(box, record, index){
-                            if(Main.AuthLevel==0)return;
                             var role=record.json;
+                            if(role.name!='专家'){
+                                Ext.getCmp('add_user_study_type_name').hide();
+                            }else{
+                                Ext.getCmp('add_user_study_type_name').show();
+                            }
+                            if(Main.AuthLevel==0)return;
                             var unit_combo=Ext.getCmp('add_user_unit_combo');
                             var unit_id=unit_combo.getValue();
                             var role_combo=Ext.getCmp('add_user_role_combo');
@@ -1248,9 +1424,10 @@ Ext.onReady(function () {
                                 }
                             }
                         }
+
                     }
                 },
-                XG.UserFields.study_type_name,
+                {fieldLabel:'学科编号', name:'study_type_name',id:'add_user_study_type_name',allowBlank:true},
                 XG.UserFields.sex,
                 XG.UserFields.phone,
                 XG.UserFields.mobile,
@@ -1262,20 +1439,20 @@ Ext.onReady(function () {
         form:{
             url:"/user/update/",
             title:"修改用户",
-            width:400,
-            height:380,
+            width:500,
+            height:420,
             items:[
                 XG.UserFields.pk,
                 XG.UserFields.name,
                 XG.UserFields.password,
                 XG.UserFields.email,
                 XG.UserFields.real_name,
-                XG.UserFields.study_type_name,
+                {fieldLabel:'学科编号', name:'study_type_name',id:'update_user_study_type_name',allowBlank:true},
                 {
                     fieldLabel:'所在单位',
                     name:'unit_id',
                     id:'edit_user_unit_combo',
-                    url:'/unit/combo/',
+                    url:'/unit/combo/?show_parent=1',
                     xtype:'remotecombo',
                     listeners:{
                         select:function(box, record, index){
@@ -1304,8 +1481,13 @@ Ext.onReady(function () {
                     id:'edit_user_role_combo',
                     listeners:{
                         select:function(box, record, index){
-                            if(Main.AuthLevel==0)return;
                             var role=record.json;
+                            if(role.name!='专家'){
+                                Ext.getCmp('update_user_study_type_name').hide();
+                            }else{
+                                Ext.getCmp('update_user_study_type_name').show();
+                            }
+                            if(Main.AuthLevel==0)return;
                             var unit_combo=Ext.getCmp('edit_user_unit_combo');
                             var unit_id=unit_combo.getValue();
                             var role_combo=Ext.getCmp('edit_user_role_combo');
@@ -1318,6 +1500,14 @@ Ext.onReady(function () {
                                     role_combo.setValue(json.pk);
                                     break;
                                 }
+                            }
+                        },
+                        render:function(){
+                            var rolename=Ext.getCmp('edit_user_role_combo').lastSelectionText;
+                            if(rolename!='专家'){
+                                Ext.getCmp('update_user_study_type_name').hide();
+                            }else{
+                                Ext.getCmp('update_user_study_type_name').show();
                             }
                         }
                     }
@@ -1338,15 +1528,16 @@ Ext.onReady(function () {
 
     node.children.push({
         leaf:true,
-        text:'项目申请人审核',
+        text:'用户审核',
+        iconCls:'Userkey',
         list:{
             url:'/user/list/approve/',
             columes:[
                 {header:'用户名', dataIndex:'name', flex:1},
                 {header:'姓名', dataIndex:'name', flex:1},
-                {header:'部门', dataIndex:'unit__name', flex:2},
+                {header:'单位', dataIndex:'unit__name', flex:2},
                 {header:'单位级别', dataIndex:'unit__level', flex:1, renderer:XG.Render.UnitLevel},
-                {header:'上级部门', dataIndex:'unit__parent_unit__name', flex:2 },
+                {header:'上级单位', dataIndex:'unit__parent_unit__name', flex:2 },
                 {header:'注册时间', dataIndex:'regtime', flex:1 }
             ],
             tbar:{}
@@ -1366,10 +1557,12 @@ Ext.onReady(function () {
         root.appendChild({
             text:'项目类型管理',
             expanded:true,
+            iconCls:'Applicationsidetree',
             leaf:false,
             children:[{
                 leaf:true,
                 text:'项目种类',
+                iconCls:'Applicationformedit',
                 list:{
                     url:"/projecttype/list/",
                     columes:[
@@ -1381,7 +1574,7 @@ Ext.onReady(function () {
                     tbar:{
                         add_row:{
                             form:{
-                                url:"/unit/add/",
+                                url:"/projecttype/add/",
                                 title:"添加项目类型",
                                 width:400,
                                 height:380,
@@ -1408,6 +1601,10 @@ Ext.onReady(function () {
                                 ]
                             },
                             url:'/projecttype/details/'
+                        },
+                        del_row:{
+                            url:'/projecttype/del/',
+                            iconCls:'Databasedelete'
                         }
                     }
                 }
@@ -1416,18 +1613,95 @@ Ext.onReady(function () {
    
     }
     if(2!=Main.AuthLevel)
-    {
+    {   
         node = {
             text:'单位管理',
             expanded:true,
             leaf:false,
+            iconCls:'House',
             children:[]
         };
+        function FuckNo(pid){
+                Ext.Ajax.request({
+                    url:'/unit/details/?id='+pid,
+                    async:false,
+                    success:function(response){
+                    var unit=Ext.decode(response.responseText);
+                    var no=Ext.getCmp('fuckno');
+                    if(unit.level==1||unit.level==2){
+                        no.setValue(unit.no);
+                        no.hide();
+                    }else{
+                        no.setValue('');
+                        no.show();
+                    }
+                }
+            });
+        }
+        function OwnerUnitChange(pid,reset){
+            var limits,curlimit, newData=[];
+            Ext.Ajax.request({
+                url:'/unit/projecttype/limits/',
+                params:{
+                    unit_id:pid
+                },
+                async:false,
+                success:function(response){
+                    limits=Ext.decode(response.responseText);
+                }
+            });
+            var f=Ext.getCmp('unit_group_ptype_field');
+            var store= f.getStore('g__ptype__project_type_id');
+            var combos=f.find('hiddenName','g__ptype__project_type_id');
+            var textfields=f.find('name','g__ptype__max_project_num');
+            var comboRecord=Ext.data.Record.create([
+                {name: 'value', mapping: 'value'},
+                {name: 'text', mapping: 'text'},
+                {name: 'limit', mapping: 'limit'}
+            ]);
+
+            store.removeAll();
+            for (var i = limits.length - 1; i >= 0; i--) {
+                store.add(new comboRecord({
+                    value:limits[i].pk,
+                    text:limits[i].name,
+                    limit:limits[i].limit
+                }));
+            };
+            if(reset){
+                var r=store.getAt(0);
+                if(r){
+                    for (var i = combos.length - 1; i >= 0; i--) {
+                        combos[i].fireEvent('select', combos[i], r);
+                    };
+                }
+            }
+       
+        }
+        function ProjectTypeChanged(combo,limit){
+            var f=combo.findParentByType('fieldset');
+            var maxNum=f.items.items[2];
+            if(limit&&limit!='unlimit'){
+                limit=parseInt(limit);
+                if(limit>0){
+                    maxNum.emptyText='该类型项目上限为'+limit;
+                }else{
+                    maxNum.emptyText='该类型已经超出上限'+limit;
+                }
+            }else{
+                maxNum.emptyText='请输入大于0的正整数';
+            }
+            maxNum.curlimit=limit;
+            maxNum.setRawValue('');
+            maxNum.applyEmptyText();
+        }
         node.children.push({
             leaf:true,
             text:'单位列表',
+            iconCls:'Housestar',
             list:{
                 url:'/unit/list/',
+                id:'admin_unit_list_grid',
                 columes:[
                     {header:'单位名', dataIndex:'name', flex:1 },
                     {header:'所属单位', dataIndex:'parent_unit__name', flex:1},
@@ -1438,71 +1712,291 @@ Ext.onReady(function () {
                     {header:'单位编号', dataIndex:'no', flex:1  },
                     {header:'单位级别', dataIndex:'level', flex:1, renderer:XG.Render.UnitLevel}
                 ],
-                tbar:{}
+                tbar:{
+                    handlers:[
+                        {
+                            text:'添加单位',
+                            iconCls:'Groupadd',
+                            handler:function(){
+                                var form =new XG.Form.SimpelPoupForm({
+                                        title:"添加单位",
+                                        width:650,
+                                        height:500,
+                                        url:"/unit/add/",
+                                        items:[
+                                            XG.UnitFields.name,
+                                            {
+                                                fieldLabel:'所属单位名称',
+                                                name:'parent_unit_id',
+                                                url:'/unit/combo/?show_parent='+1,
+                                                xtype:'remotecombo',
+                                                id:'unit_form_combox',
+                                                listeners:{
+                                                    select:function(combo,r,index){
+                                                        var pid=r.data.pk;
+                                                        OwnerUnitChange(pid,true);
+                                                        FuckNo(pid);
+                                                    },
+                                                    render:function(){
+                                                        var pid=Ext.getCmp('unit_form_combox').getValue();
+                                                        OwnerUnitChange(pid);
+                                                        FuckNo(pid);
+                                                    }
+                                                }
+                                            },
+                                            XG.UnitFields.address,
+                                            {
+                                                fieldLabel:'单位名称全拼',
+                                                name:'no',
+                                                emptyText:'(每个字首字母大写)',
+                                                id:'fuckno'
+                                            },
+                                            XG.UnitFields.phone,
+                                            XG.UnitFields.apply_starttime,
+                                            XG.UnitFields.apply_endtime,
+                                            {
+                                                xtype:'onetomanyfields',
+                                                anchor:'-10',
+                                                gname:'ptype',
+                                                id:'unit_group_ptype_field',
+                                                citems:
+                                                [   
+                                                    {
+                                                        name:'g__ptype__pk',
+                                                        xtype:'hidden'
+                                                    },
+                                                    {
+                                                        fieldLabel : "项目类型",
+                                                        url:'/projecttype/combo/',
+                                                        xtype:'groupcombo',
+                                                        valueField:'pk',
+                                                        displayField:'name',
+                                                        name:'g__ptype__project_type_id',
+                                                        listeners:{
+                                                            select:function(combo,r,index){
+                                                                var limit=r.data.limit;
+                                                                ProjectTypeChanged(combo,limit);
+                                                            },
+                                                            render:function(){
+                                                                var limit=this.getStore().getAt(0).data.limit;
+                                                                ProjectTypeChanged(this,limit);
+                                                            }
+                                                        }
+                                                    },
+                                                    {
+                                                        name:'g__ptype__max_project_num', 
+                                                        xtype:'textfield',
+                                                        fieldLabel:'最大申请项目数',
+                                                        vtype:'positive'
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                        vailidate:function(form){
+                                            var f=Ext.getCmp('unit_group_ptype_field');
+                                            var maxNums=f.find('name','g__ptype__max_project_num'),m,v,passThrough=true;
+                                            for (var i = maxNums.length - 1; i >= 0; i--) {
+                                                m=maxNums[i];
+                                                v=m.getValue();
+                                                if(!isNatual(v)||parseInt(v)>m.curlimit){
+                                                    ProjectTypeChanged(m,m.curlimit);
+                                                    passThrough=false;
+                                                }
+                                            };
+                                            if(!passThrough){
+                                                alert('请填写正确的项目数量！');
+                                                return false;
+                                            }
+                                            var values=form.getValues().g__ptype__project_type_id;
+                                            if(isArrary(values)&&isHasSameVar(values)){
+                                                alert('必须填写不同的项目种类！');
+                                                return false
+                                            }
+                                            return true;
+                                        },
+                                        success:function(){
+                                            Ext.getCmp('admin_unit_list_grid').getStore().reload();
+                                            alert('添加成功!');
+                                        }
+
+                                });
+                                form.show();
+                            }
+                        },{
+                            text:'修改单位',
+                            iconCls:'Groupedit',
+                            handler:function(){
+                                var sels = Main.CurrentGrid().getIdArr();
+                                if(sels.length!=1){
+                                    alert('请单选需要修改的数据！');
+                                    return;
+                                }
+                                var pk=sels[0];
+                                var form =new XG.Form.SimpelPoupForm({
+                                        title:"修改单位",
+                                        width:650,
+                                        height:500,
+                                        url:"/unit/update/",
+                                        items:[
+                                            XG.UnitFields.pk,
+                                            XG.UnitFields.name,
+                                            {
+                                                fieldLabel:'所属单位名称',
+                                                name:'parent_unit_id',
+                                                url:'/unit/combo/?show_parent=1',
+                                                xtype:'remotecombo',
+                                                id:'unit_form_combox',
+                                                listeners:{
+                                                    select:function(combo,r,index){
+                                                        var pid=r.data.pk;
+                                                        OwnerUnitChange(pid,true);
+                                                        FuckNo(pid);
+                                                    },
+                                                    render:function(){
+                                                        var pid=Ext.getCmp('unit_form_combox').getValue();
+                                                        OwnerUnitChange(pid);
+                                                        //FuckNo(pid);
+                                                    }
+                                                }
+                                            },
+                                            XG.UnitFields.address,
+                                            {
+                                                fieldLabel:'单位名称全拼',
+                                                name:'no',
+                                                emptyText:'(每个字首字母大写)',
+                                                id:'fuckno'
+                                            },
+                                            XG.UnitFields.phone,
+                                            XG.UnitFields.apply_starttime,
+                                            XG.UnitFields.apply_endtime,
+                                            {
+                                                xtype:'onetomanyfields',
+                                                anchor:'-10',
+                                                gname:'ptype',
+                                                id:'unit_group_ptype_field',
+                                                citems:
+                                                [   
+                                                    {
+                                                        name:'g__ptype__pk',
+                                                        xtype:'hidden'
+                                                    },
+                                                    {
+                                                        fieldLabel : "项目类型",
+                                                        url:'/projecttype/combo/',
+                                                        xtype:'groupcombo',
+                                                        valueField:'pk',
+                                                        displayField:'name',
+                                                        name:'g__ptype__project_type_id',
+                                                        listeners:{
+                                                            select:function(combo,r,index){
+                                                                var limit=r.data.limit;
+                                                                ProjectTypeChanged(combo,limit);
+                                                            },
+                                                            render:function(){
+                                                                var limit=this.getStore().getAt(0).data.limit;
+                                   
+                                                                ProjectTypeChanged(this,limit);
+                                                            }
+                                                        }
+                                                    },
+                                                    {
+                                                        name:'g__ptype__max_project_num', 
+                                                        xtype:'textfield',
+                                                        fieldLabel:'最大申请项目数',
+                                                        vtype:'positive'
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                        vailidate:function(form){
+                                            var f=Ext.getCmp('unit_group_ptype_field');
+                                            var maxNums=f.find('name','g__ptype__max_project_num'),m,v,passThrough=true;
+                                            for (var i = maxNums.length - 1; i >= 0; i--) {
+                                                m=maxNums[i];
+                                                v=m.getValue();
+                                                if(!isNatual(v)||parseInt(v)>m.curlimit){
+                                                    ProjectTypeChanged(m,m.curlimit);
+                                                    passThrough=false;
+                                                }
+                                            };
+                                            if(!passThrough){
+                                                alert('请填写正确的项目数量！');
+                                                return false;
+                                            }
+                                            var values=form.getValues().g__ptype__project_type_id;
+                                            if(isArrary(values)&&isHasSameVar(values)){
+                                                alert('必须填写不同的项目种类！');
+                                                return false
+                                            }
+                                            return true;
+                                        },
+                                        success:function(){
+                                            Ext.getCmp('admin_unit_list_grid').getStore().reload();
+                                            alert('修改成功!');
+                                        }
+                                });
+                                Ext.Ajax.request({
+                                    url:'/unit/details/',
+                                    method:"post",
+                                    params:{
+                                        id:pk
+                                    },
+                                    success:function (response) {
+
+                                        var json = Ext.util.JSON.decode(response.responseText);
+                                     
+                                        form.fill(json);
+
+                                       if(json.pk==Main.UserUnitID){
+                                           form.setReadOnly(true);
+                                        }
+                                        form.show();
+                                    },
+                                    failure:function (form, action) {
+                                        if ('result' in action) {
+                                            if ('msg' in action.result) {
+                                                error(action.result.msg);
+                                            }
+                                        }
+                                        else {
+                                            error('发生异常!');
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    ],
+                    del_row:{
+                        url:'/unit/del/',
+                        iconCls:'Databasedelete'
+                    }
+                }
             }
         });
-        node.children[0].list.tbar.add_row = {
-            form:{
-                url:"/unit/add/",
-                title:"添加单位",
-                width:500,
-                height:450,
-                items:[
-                    XG.UnitFields.name,
-                    XG.UnitFields.parent_unit_id,
-                    XG.UnitFields.address,
-                    XG.UnitFields.no,
-                    XG.UnitFields.project_type_id,
-                    XG.UnitFields.max_project,
-                    XG.UnitFields.phone]}
-        };
-
-        node.children[0].list.tbar.update_row = {
-            form:{
-                url:"/unit/update/",
-                title:"修改单位",
-                width:400,
-                height:380,
-                items:[
-                    XG.UnitFields.pk,
-                    XG.UnitFields.name,
-                    XG.UnitFields.parent_unit_id,
-                    XG.UnitFields.address,
-                    XG.UnitFields.project_type_id,
-                    XG.UnitFields.max_project,
-                    XG.UnitFields.no,
-                    XG.UnitFields.apply_starttime,
-                    XG.UnitFields.apply_endtime,
-                    XG.UnitFields.phone
-                ]},
-            url:'/unit/details/'
-
-        };
-        node.children[0].list.tbar.del_row ={
-            url:'/unit/del/',
-            iconCls:'Databasedelete'
-        };
-
-
+      
         node.children.push({
             leaf:true,
             text:'单位审核',
+            iconCls:'Housekey',
             list:{
                 url:'/unit/list/approve/',
                 columes:[
                     {header:'单位名', dataIndex:'name', flex:1},
                     {header:'所属单位', dataIndex:'parent_unit__name', flex:1 },
                     {header:'单位地址', dataIndex:'address', flex:1 },
-                    {header:'项目类型名称', dataIndex:'project_type__name', flex:1},
+                    {header:'项目最大数量', dataIndex:'project_type__name', flex:1},
                     {header:'单位级别', dataIndex:'level', flex:1, renderer:XG.Render.UnitLevel },
                     {header:'注册时间', dataIndex:'regtime', flex:1 }
                 ],
                 tbar:{}
             }
         });
+
         node.children[1].list.tbar.approve_row = {
             title:'单位审核',
             url:'/unit/approve/',
+            argreeText:"同意注册",
+            disargreeText:"退回注册",
             iconCls:'Housekey'
         };
         root.appendChild(node);
@@ -1516,6 +2010,7 @@ Ext.onReady(function () {
         text:'消息通知',
         expanded:true,
         leaf:false,
+        iconCls:'Usercomment',
         children:[]
     };
 
@@ -1524,6 +2019,7 @@ Ext.onReady(function () {
         node.children.push({
             text:'消息发送',
             leaf:true,
+            iconCls:'Commentadd',
             defaults:{
                 allowBlank:false,
                 width:230
@@ -1538,7 +2034,7 @@ Ext.onReady(function () {
                     allowBlank:false
                 },
                 items: [
-                {fieldLabel:'接受部门',name:'receiver_unit_id',width:250, url:'/message/message_recvier_combo/',xtype:'remotecombo'},
+                {fieldLabel:'接受单位',name:'receiver_unit_id',width:250, url:'/message/message_recvier_combo/',xtype:'remotecombo'},
                 {fieldLabel: '标题',name: 'title',anchor:'85%'},
                 {fieldLabel: '摘要',name: 'abstract',anchor: '85%'},
                 {fieldLabel: '内容',xtype: 'textarea',name: 'content',anchor: '85% -200'}
@@ -1638,7 +2134,7 @@ Ext.onReady(function () {
         node.children.push({
             text:'我收到的消息',
             leaf:true,
-           
+            iconCls:'Commentplay',
             list:{
                 nocheck:true,
                 id:'wait_pub_message_list',
@@ -1649,7 +2145,7 @@ Ext.onReady(function () {
                     {header:'发送时间', dataIndex:'send_time', flex:1 },
                     {header:'发送人', dataIndex:'sender_name', flex:1 },
                     {header:'发送人姓名', dataIndex:'sender_real_name', flex:1 },
-                    {header:'发送部门', dataIndex:'sender_unit__name', flex:1 },
+                    {header:'发送单位', dataIndex:'sender_unit__name', flex:1 },
                     {dataIndex:"content"},
                     {
                         header:'操作', 
@@ -1660,26 +2156,26 @@ Ext.onReady(function () {
                         }.createDelegate(this)
                     }
                 ],
-                viewConfig: {
-                forceFit:true,
-                enableRowBody:true,
-                showPreview:true,
-                getRowClass : function(record, rowIndex, p, store){
-                        if(this.showPreview){
-                            p.body = '<p>消息内容: '+record.data.content+'</p>';
-                            return 'x-grid3-row-expanded';
-                        }
+                viewConfig:{
+                    forceFit:true,
+                    enableRowBody:true,
+                    showPreview:true,
+                    getRowClass : function(record, rowIndex, p, store){
+                            if(this.showPreview){
+                                p.body = '<p>消息内容: '+record.data.content+'</p>';
+                                return 'x-grid3-row-expanded';
+                            }
                         return 'x-grid3-row-collapsed';
                     }
                 }
             }
         });
     }
-    
 
     node.children.push({
         text:'已发送的消息',
         leaf:true,
+        iconCls:'Commentrecord',
         list:{
             nocheck:true,
             url:"/message/sended/list/",
@@ -1689,7 +2185,7 @@ Ext.onReady(function () {
                 {header:'发送时间', dataIndex:'send_time', flex:1 },
                 {header:'发送人', dataIndex:'sender_name', flex:1 },
                 {header:'发送人姓名', dataIndex:'sender_real_name', flex:1 },
-                {header:'发送部门', dataIndex:'sender_unit__name', flex:1 },
+                {header:'发送单位', dataIndex:'sender_unit__name', flex:1 },
                 {dataIndex:"content"}
             ],
             viewConfig: {
@@ -1712,16 +2208,42 @@ Ext.onReady(function () {
 {%endifequal%}
 {%ifequal user.role.code 'expert'%}
 <script type="text/javascript">
+
     Ext.onReady(function () {
         var root = Main.tree.getRootNode();
+        Ext.TaskMgr.start({
+            run: function(){
+                Ext.Ajax.request({  
+                    url:'/user/notify/count/',
+                    method:'post',  
+                    success:function(response,options){
+                        var res = Ext.util.JSON.decode(response.responseText);  
+                        for (var j = root.childNodes.length - 1; j >= 0; j--) {
+                            var r=root.childNodes[j];
+                            var childrens=r.childNodes;//项目申请
+                            for (var i = childrens.length - 1; i >= 0; i--) {
+                                var n=childrens[i];
+                                if(n.text.indexOf('待评审的项目')!=-1)
+                                    n.setText('待评审的项目('+res.waitapprove+')');
+                                else if(n.text.indexOf('已评审的项目')!=-1)
+                                    n.setText('已评审的项目('+res.approved+')');
+                            }
+                        };
+                    }
+                });
+            },
+            interval: 3000
+        });
         var node = {
             text:'项目评审',
             expanded:true,
+            iconCls:'Monitorlightning',
             leaf:false,
             children:[
                 {
                     text:'待评审的项目',
                     leaf:true,
+                    iconCls:'Monitorlink',
                     list:{
                         url:"/project/apply/list/",
                         baseParams:{
@@ -1758,14 +2280,73 @@ Ext.onReady(function () {
                                 title:"评审", 
                                 url:'/project/apply/approve/', 
                                 iconCls:'Useralert',
-                                width:350,
-                                height:200,
+                                argreeText:"评审",
+                                disagreeText:"拒绝评审",
+                                optionText:'评审意见',
+                                optionAllowBanlk:true,
+                                agreeHandler:function(form,win){
+                                    form.submit({
+                                        url:'/project/apply/approve/',
+                                        method:"post",
+                                        success:function () {
+                                            win.close();
+                                            Main.CurrentGrid().getStore().load();
+                                            alert('操作成功!');
+                                        },
+                                        failure:function (form, action) {
+                                            win.close();
+                                            if ('result' in action) {
+                                                if ('msg' in action.result) {
+                                                    error(action.result.msg);
+                                                }
+                                            }
+                                            else {
+                                                error('发生异常!');
+                                            }
+
+                                        }
+                                    });
+                                },
+                                disagreeHandler:function(form,win){
+                                    form.submit({
+                                        clientValidation: true,
+                                        url: '/project/apply/approve/',
+                                        success:function () {
+                                            win.close();
+                                            Main.CurrentGrid().getStore().load();
+                                            alert('审核成功!');
+                                        },
+                                        failure:function (form, action) {
+                                            win.close();
+                                            if ('result' in action) {
+                                                if ('msg' in action.result) {
+                                                    error(action.result.msg);
+                                                }
+                                            }
+                                            else {
+                                                error('发生异常!');
+                                            }
+                                        }
+                                    });
+                                },
+                                width:416,
+                                height:278,
                                 items:[
+                                {
+                                    fieldLabel:'资助意见',
+                                    xtype:'localcombo',
+                                    name:'expert_support',
+                                    data:[
+                                    ['优先资助','优先资助'],
+                                    ['可资助','可资助'],
+                                    ['不予资助','不予资助']]
+                                },
                                 {
                                     fieldLabel:'评分(0-100)',
                                     xtype:'textfield',
                                     name:'expert_percent',
-                                    vtype:'percent'
+                                    vtype:'percent',
+                                    allowBlank:true
                                 }]
                             }
                         }
@@ -1773,6 +2354,7 @@ Ext.onReady(function () {
                 },{
                     text:'已评审的项目',
                     leaf:true,
+                    iconCls:'Monitorgo',
                     list:{
                         url:"/project/apply/list/",
                         columes:[
@@ -1815,6 +2397,7 @@ Ext.onReady(function () {
             text:'消息管理',
             expanded:true,
             leaf:false,
+            iconCls:'Usercomment',
             children:[]
         };
         
@@ -1822,7 +2405,7 @@ Ext.onReady(function () {
         node.children.push({
             text:'系统消息',
             leaf:true,
-
+            iconCls:'Commentplay',
             list:{
                 id:'wait_pub_message_list',
                 url:"/message/list/",
@@ -1833,7 +2416,7 @@ Ext.onReady(function () {
                     {header:'发送时间', dataIndex:'send_time', flex:1 },
                     {header:'发送人', dataIndex:'sender_name', flex:1 },
                     {header:'发送人姓名', dataIndex:'sender_real_name', flex:1 },
-                    {header:'接收部门', dataIndex:'sender_unit__name', flex:1 },
+                    {header:'接收单位', dataIndex:'sender_unit__name', flex:1 },
                     {dataIndex:'content'}
                 ],
                 viewConfig: {
@@ -1932,7 +2515,7 @@ Ext.onReady(function () {
                                                     name: 'project_area_name_s',
                                                     hiddenName:'project_area_name',
                                                     anchor:'78%',
-                                                    value:'数学',
+                                                    value:'人文社会科学',
                                                     store:new Ext.data.JsonStore({
                                                         fields : ['name'],
                                                         data:[
@@ -1973,10 +2556,12 @@ Ext.onReady(function () {
                                                         url:'/projecttype/combo/',
                                                         xtype:'remotecombo',
                                                         name:'project_type_id',
-                                                        baseFields:[
-                                                            {name:'name', mapping:'project_type__name', type:'string'},
-                                                            {name:'pk', mapping:'project_type__pk', type:'int'}
-                                                        ]
+                                                        valueField:'project_type__pk',
+                                                        displayField:'project_type__name'
+                                                        // baseFields:[
+                                                        //     {name:'name', mapping:'project_type__name', type:'string'},
+                                                        //     {name:'pk', mapping:'project_type__pk', type:'int'}
+                                                        // ]
                                                     }
                                                ]
                                             },{
@@ -2028,18 +2613,18 @@ Ext.onReady(function () {
                                     {
                                         layout:'column',
                                         border:false,
-                                 
                                         items:[
                                             {
+
                                                columnWidth :.25, // 该列有整行中所占百分比
                                                layout : "form", // 从上往下的布局
                                                border:false,
                                                items : [{
-                                                  xtype : "textfield",
-                                                  fieldLabel : "硕士生导师",
-                                                  name:'teacher_name_ss',
-                                                  allowBlank:false,
-                                                  anchor:'85%'
+                                                    fieldLabel: '是否为硕士生导师',
+                                                    xtype:'localcombo',
+                                                    data:[['否','否'],['是','是']],
+                                                    name:'teacher_name_ss',
+                                                    anchor:'85%'
                                                }]
                                             },
                                             {
@@ -2047,10 +2632,10 @@ Ext.onReady(function () {
                                                layout : "form", // 从上往下的布局
                                                border:false,
                                                items : [{
-                                                  xtype : "textfield",
-                                                  fieldLabel : "博士生导师",
+                                                  xtype:'localcombo',
+                                                  fieldLabel : "是否为博士生导师",
                                                   name:'teacher_name_bs',
-                                                  allowBlank:false,
+                                                  data:[['否','否'],['是','是']],
                                                   anchor:'85%'
                                                }]
                                             },
@@ -2092,227 +2677,107 @@ Ext.onReady(function () {
                                         height:150,
                                         maxLength:200
                                     },
-                                    {   
-                                        xtype:'fieldset',
+                                    {
+                                        xtype:'onetomanyfields',
                                         title: '课题主要参加者相关情况(限填5项)',
-                                        
-                                        collapsible: true,
-                                        anchor:'100%',
-                                        layout:"form",
-                                        id:'project_apply_user_add',
-                                        items:[
+                                        gname:'actor',
+                                        max:5,
+                                        collapsible:true,
+                                        citems:[
                                             {
-                                                xtype:'fieldset',
-                                                title: '参加者信息 1',
-                                                anchor:'100%',
-                                                items:[
-                                                    {
-                                                      xtype : "textfield",
-                                                      fieldLabel:'姓名',
-                                                      allowBlank:false,
-                                                      name:'g__actor__name__1',
-                                                      anchor:'78%'
-                                                    },
-                                                    {
-                                                        xtype:'combo',
-                                                        mode:'local',
-                                                        editable:false,
-                                                        valueField:'name',
-                                                        displayField:   'name',
-                                                        fieldLabel : "职称",
-                                                        triggerAction:  'all',
-                                                        forceSelection: true,
-                                                        name: 'g__actor__job_zc__s',
-                                                        hiddenName:'g__actor__job_zc__1',
-                                                        anchor:'50%',
-                                                        value:'讲师',
-                                                        store:new Ext.data.JsonStore({
-                                                            fields : ['name'],
-                                                            data:[
-                                                                {name:'讲师'},
-                                                                {name:'副研究员'},
-                                                                {name:'研究员'},
-                                                                {name:'副教授'},
-                                                                {name:'教授'}
-                                                            ]
-                                                        })
-                                                    },
-                                                    {
-                                                        xtype:'combo',
-                                                        mode:'local',
-                                                        editable:false,
-                                                        valueField:'name',
-                                                        displayField:   'name',
-                                                        fieldLabel : "职务",
-                                                        triggerAction:  'all',
-                                                        forceSelection: true,
-                                                        name: 'g__actor__job_zw__s',
-                                                        hiddenName:'g__actor__job_zw__1',
-                                                        anchor:'50%',
-                                                        value:'讲师',
-                                                        store:new Ext.data.JsonStore({
-                                                            fields : ['name'],
-                                                            data:[
-                                                                {name:'司长'},
-                                                                {name:'副司长'},
-                                                                {name:'局长'},
-                                                                {name:'副局长'},
-                                                                {name:'厅长'},
-                                                                {name:'副厅长'}
-                                                            ]
-                                                        })
-                                                    },
-                                                    {
-                                                        xtype:'combo',
-                                                        mode:'local',
-                                                        editable:false,
-                                                        valueField:'name',
-                                                        displayField:   'name',
-                                                        fieldLabel : "学位",
-                                                        triggerAction:  'all',
-                                                        forceSelection: true,
-                                                        name: 'g__actor__degree__s',
-                                                        hiddenName:'g__actor__degree__1',
-                                                        anchor:'50%',
-                                                        value:'学士',
-                                                        store:new Ext.data.JsonStore({
-                                                            fields : ['name'],
-                                                            data:[
-                                                                {name:'学士'},
-                                                                {name:'硕士'},
-                                                                {name:'博士'},
-                                                                {name:'博士后'}
-                                                            ]
-                                                        })
-                                                    },
-                                                    {
-                                                      xtype : "textarea",
-                                                      anchor:'78%',
-                                                      name:'g__actor__desc__1',
-                                                      allowBlank:false,
-                                                      fieldLabel:'近几年与本课题相关的研究成果'
-                                                    }
-                                                ]
-                                            }
-                                        ],
-                                        buttons: [{
-                                            text: '继续添加',
-                                            handler:function(){
-                                                var f=Ext.getCmp('project_apply_user_add');
-                                                var index=f.items.length+1;
-                                                if(index>5){
-                                                    alert('限填5项,无法继续添加信息了！');
-                                                    return;
-                                                }
-                                                f.add({
-                                                    xtype:'fieldset',
-                                                    title: '参加者信息 '+index,
-                                                    anchor:'80%',
-                                                    items:[
-                                                        {
-                                                          xtype : "textfield",
-                                                          fieldLabel:'姓名',
-                                                          allowBlank:false,
-                                                          name:'g__actor__name__'+index,
-                                                          anchor:'90%'
-                                                        },
-                                                        {
-                                                            xtype:'combo',
-                                                            mode:'local',
-                                                            editable:false,
-                                                            valueField:'name',
-                                                            displayField:   'name',
-                                                            fieldLabel : "职称",
-                                                            triggerAction:  'all',
-                                                            forceSelection: true,
-                                                            name: 'g__actor__job_zc__s'+index,
-                                                            hiddenName:'g__actor__job_zc__'+index,
-                                                            anchor:'50%',
-                                                            value:'讲师',
-                                                            store:new Ext.data.JsonStore({
-                                                                fields : ['name'],
-                                                                data:[
-                                                                    {name:'讲师'},
-                                                                    {name:'副研究员'},
-                                                                    {name:'研究员'},
-                                                                    {name:'副教授'},
-                                                                    {name:'教授'}
-                                                                ]
-                                                            })
-                                                        },
-
-                                                        {
-                                                            xtype:'combo',
-                                                            mode:'local',
-                                                            editable:false,
-                                                            valueField:'name',
-                                                            displayField:   'name',
-                                                            fieldLabel : "职务",
-                                                            triggerAction:  'all',
-                                                            forceSelection: true,
-                                                            name: 'g__actor__job_zw__s'+index,
-                                                            hiddenName:'g__actor__job_zw__'+index,
-                                                            anchor:'50%',
-                                                            value:'讲师',
-                                                            store:new Ext.data.JsonStore({
-                                                                fields : ['name'],
-                                                                data:[
-                                                                    {name:'司长'},
-                                                                    {name:'副司长'},
-                                                                    {name:'局长'},
-                                                                    {name:'副局长'},
-                                                                    {name:'厅长'},
-                                                                    {name:'副厅长'}
-                                                                ]
-                                                            })
-                                                        },
-                                                        {
-                                                            xtype:'combo',
-                                                            mode:'local',
-                                                            editable:false,
-                                                            valueField:'name',
-                                                            displayField:   'name',
-                                                            fieldLabel : "学位",
-                                                            triggerAction:  'all',
-                                                            forceSelection: true,
-                                                            name: 'g__actor__degree__s'+index,
-                                                            hiddenName:'g__actor__degree__'+index,
-                                                            anchor:'50%',
-                                                            value:'学士',
-                                                            store:new Ext.data.JsonStore({
-                                                                fields : ['name'],
-                                                                data:[
-                                                                    {name:'学士'},
-                                                                    {name:'硕士'},
-                                                                    {name:'博士'},
-                                                                    {name:'博士后'}
-                                                                ]
-                                                            })
-                                                        },
-                                                        {
-                                                          xtype : "textarea",
-                                                          anchor:'90%',
-                                                          name:'g__actor__desc__'+index,
-                                                          allowBlank:false,
-                                                          fieldLabel:'近几年与本课题相关的研究成果'
-                                                        }
+                                              xtype : "textfield",
+                                              fieldLabel:'姓名',
+                                              allowBlank:false,
+                                              name:'g__actor__name',
+                                              anchor:'78%'
+                                            },
+                                            {
+                                                xtype:'combo',
+                                                mode:'local',
+                                                editable:false,
+                                                valueField:'name',
+                                                displayField:   'name',
+                                                fieldLabel : "职称",
+                                                triggerAction:  'all',
+                                                forceSelection: true,
+                                                name: 'g__actor__job_zc__s',
+                                                hiddenName:'g__actor__job_zc',
+                                                anchor:'50%',
+                                                value:'无',
+                                                store:new Ext.data.JsonStore({
+                                                    fields : ['name'],
+                                                    data:[
+                                                        {name:'无'},
+                                                        {name:'助教'},
+                                                        {name:'讲师'},
+                                                        {name:'副研究员'},
+                                                        {name:'研究员'},
+                                                        {name:'副教授'},
+                                                        {name:'教授'}
                                                     ]
-                                                });
-                                                f.doLayout(); 
+                                                })
+                                            },
+                                            {
+                                                xtype:'combo',
+                                                mode:'local',
+                                                editable:false,
+                                                valueField:'name',
+                                                displayField:   'name',
+                                                fieldLabel : "职务",
+                                                triggerAction:  'all',
+                                                forceSelection: true,
+                                                name: 'g__actor__job_zw__s',
+                                                hiddenName:'g__actor__job_zw',
+                                                anchor:'50%',
+                                                value:'无',
+                                                store:new Ext.data.JsonStore({
+                                                    fields : ['name'],
+                                                    data:[
+                                                        {name:'无'},
+                                                        {name:'处长'},
+                                                        {name:'副处长'},
+                                                        {name:'司长'},
+                                                        {name:'副司长'},
+                                                        {name:'局长'},
+                                                        {name:'副局长'},
+                                                        {name:'厅长'},
+                                                        {name:'副厅长'}
+                                                    ]
+                                                })
+                                            },
+                                            {
+                                                xtype:'combo',
+                                                mode:'local',
+                                                editable:false,
+                                                valueField:'name',
+                                                displayField:   'name',
+                                                fieldLabel : "学位",
+                                                triggerAction:  'all',
+                                                forceSelection: true,
+                                                name: 'g__actor__degree__s',
+                                                hiddenName:'g__actor__degree',
+                                                anchor:'50%',
+                                                value:'学士',
+                                                store:new Ext.data.JsonStore({
+                                                    fields : ['name'],
+                                                    data:[
+                                                        {name:'学士'},
+                                                        {name:'硕士'},
+                                                        {name:'博士'}
+                                                    ]
+                                                })
+                                            },
+                                            {
+                                              xtype : "textarea",
+                                              anchor:'78%',
+                                              name:'g__actor__desc',
+                                              allowBlank:false,
+                                              maxLength:200,
+                                              fieldLabel:'近几年与本课题相关的研究成果(限200字)'
                                             }
-
-                                        },{
-                                            text: '移除',
-                                            handler:function(){
-                                                var f=Ext.getCmp('project_apply_user_add');
-                                                var index=f.items.length;
-                                                if(index<=1)return;
-                                                var cmp=f.items.items[index-1];
-                                                f.remove(cmp,true);
-
-                                            }
-                                        }]
+                                        ]
                                     },
+                                  
                                     {
                                         xtype:'textarea',
                                         fieldLabel:'预期成果概述',
@@ -2375,256 +2840,89 @@ Ext.onReady(function () {
                                 ]
                             },
                             {
-                                xtype:'fieldset',
+                                xtype:'onetomanyfields',
                                 title: '预期研究成果(限制填10项)',
                                 collapsible: true,
-                                collapsed:false,
                                 anchor:'100%',
-                                id:'project_apply_pre_process_add',
-                                items:[
-                                        {
-                                            xtype:'fieldset',
-                                            title: '阶段性成果 1',
-                                            anchor:'80%',
-                                            items:[
-                                                {
-                                                    xtype: 'compositefield',
-                                                    fieldLabel: '研究阶段(起止时间)',
-                                                    msgTarget : 'side',
-                                                    anchor    : '-20',
-                                                    defaults: {
-                                                        flex: 1
-                                                    },
-                                                    items: [
-                                                        DefaultDateFeild({
-                                                            name : 'g__levelachive__start_time__1',
-                                                            id:'g__levelachive__start_time__1',
-                                                            endDateField: 'g__levelachive__end_time__1',
-                                                            vtype:'daterange'
-                                                        }),
-                                                        DefaultDateFeild({
-                                                            vtype:'daterange',
-                                                            id:'g__levelachive__end_time__1',
-                                                            startDateField: 'g__levelachive__start_time__1',
-                                                            name : 'g__levelachive__end_time__1'
-                                                        })
-                                                        
-                                                    ]
-                                                },
-                                                {
-                                                  xtype : "textfield",
-                                                  fieldLabel:'阶 段 成 果 名 称',
-                                                  allowBlank:false,
-                                                  name:'g__levelachive__name__1',
-                                                  anchor:'90%'
-                                                },
-                                                {
-                                                  xtype : "textarea",
-                                                  anchor:'90%',
-                                                  allowBlank:false,
-                                                  maxLength:200,
-                                                  name:'g__levelachive__atype__1',
-                                                  fieldLabel:'成果形式(限200字)'
-                                                },
-                                                {
-                                                  xtype : "textfield",
-                                                  fieldLabel:'承 担 人',
-                                                  name:'g__levelachive__apply_user__1',
-                                                  allowBlank:false,
-                                                  anchor:'90%'
-                                                }
-                                            ]
-                                        }
-                                    ],
-                                buttons: [{
-                                    text: '继续添加',
-                                    handler:function(){
-                                        var f=Ext.getCmp('project_apply_pre_process_add');
-                                        var index=f.items.length+1;
-                                        if(index>10){
-                                            alert('限填10项,无法继续添加信息了！');
-                                            return;
-                                        }
-                                        f.add({
-                                            xtype:'fieldset',
-                                            title: '阶段性成果 '+index,
-                                            anchor:'80%',
-                                            items:[
-                                                {
-                                                    xtype: 'compositefield',
-                                                    fieldLabel: '研究阶段(起止时间)',
-                                                    msgTarget : 'side',
-                                                    anchor    : '-20',
-                                                    defaults: {
-                                                        flex: 1
-                                                    },
-                                                    items: [
-                                                        DefaultDateFeild({
-                                                            name : 'g__levelachive__start_time__'+index,
-                                                            id:'g__levelachive__start_time__'+index,
-                                                            endDateField: 'g__levelachive__end_time__'+index,
-                                                            vtype:'daterange'
-                                                        }),
-                                                        DefaultDateFeild({
-                                                            vtype:'daterange',
-                                                            id:'g__levelachive__end_time__'+index,
-                                                            startDateField: 'g__levelachive__start_time__'+index,
-                                                            name : 'g__levelachive__end_time__'+index
-                                                        })
-                                                        
-                                                    ]
-                                                },
-                                                {
-                                                  xtype : "textfield",
-                                                  fieldLabel:'阶 段 成 果 名 称',
-                                                  allowBlank:false,
-                                                  name:'g__levelachive__name__'+index,
-                                                  anchor:'90%'
-                                                },
-                                                {
-                                                  xtype : "textarea",
-                                                  anchor:'90%',
-                                                  allowBlank:false,
-                                                  name:'g__levelachive__atype__'+index,
-                                                  fieldLabel:'成果形式'
-                                                },
-                                                {
-                                                  xtype : "textfield",
-                                                  fieldLabel:'承 担 人',
-                                                  name:'g__levelachive__apply_user__'+index,
-                                                  allowBlank:false,
-                                                  anchor:'90%'
-                                                }
-                                            ]
-                                        });
-                                        f.doLayout(); 
+                                max:10,
+                                gname:'levelachive',
+                                citems:[
+                                    DefaultDateFeild({
+                                        name : 'g__levelachive__start_time',
+                                        fieldLabel:'研究阶段开始时间'
+                                    }),
+                                    DefaultDateFeild({
+                                        name : 'g__levelachive__end_time',
+                                        fieldLabel:'研究阶段结束时间'
+                                    }),
+                                    {
+                                      xtype : "textfield",
+                                      fieldLabel:'阶 段 成 果 名 称',
+                                      allowBlank:false,
+                                      name:'g__levelachive__name',
+                                      anchor:'90%'
+                                    },
+                                    {
+                                      xtype : "textarea",
+                                      anchor:'90%',
+                                      allowBlank:false,
+                                      maxLength:200,
+                                      name:'g__levelachive__atype',
+                                      fieldLabel:'成果形式(限200字)'
+                                    },
+                                    {
+                                      xtype : "textfield",
+                                      fieldLabel:'承 担 人',
+                                      name:'g__levelachive__apply_user',
+                                      allowBlank:false,
+                                      anchor:'90%'
                                     }
-                                },{
-                                    text: '移除',
-                                    handler:function(){
-                                        var f=Ext.getCmp('project_apply_pre_process_add');
-                                        var index=f.items.length;
-                                        if(index<=1)return;
-                                        var cmp=f.items.items[index-1];
-                                        f.remove(cmp,true);
-                                    }
-                                }]
-                            },
-                            {
-                                xtype:'fieldset',
+                                ]
+                            },{
+                                xtype:'onetomanyfields',
                                 title: '最终研究成果(限制填2项)',
+                                max:2,
                                 collapsible: true,
-                                collapsed:false,
                                 anchor:'100%',
-                                id:'project_apply_final_process_add',
-                                items:[
-                                        {
-                                            xtype:'fieldset',
-                                            title: '最终成果 1',
-                                            anchor:'80%',
-                                            items:[
-                                                DefaultDateFeild({
-                                                  fieldLabel:'完成时间',
-                                                  name:'g__finalachive__end_time__1',
-                                                  anchor:'90%'
-                                                })
-                                                ,
-                                                {
-                                                  xtype : "textfield",
-                                                  fieldLabel:'最 终 成 果 名称',
-                                                  name:'g__finalachive__name__1',
-                                                  allowBlank:false,
-                                                  anchor:'90%'
-                                                },
-                                                {
-                                                  xtype : "textarea",
-                                                  anchor:'90%',
-                                                  allowBlank:false,
-                                                  name:'g__finalachive__atype__1',
-                                                  fieldLabel:'成果形式'
-                                                },
-                                                {
-                                                  xtype : "textfield",
-                                                  fieldLabel:'预计字数',
-                                                  name:'g__finalachive__font_num__1',
-                                                  allowBlank:false,
-                                                  vtype:'positive',
-                                                  anchor:'90%'
-                                                },
-                                                {
-                                                  xtype : "textfield",
-                                                  fieldLabel:'参 加 人',
-                                                  name:'g__finalachive__actor__1',
-                                                  allowBlank:false,
-                                                  anchor:'90%'
-                                                }
-                                            ]
-                                        }
-                                    ],
-                                buttons: [{
-                                    text: '继续添加',
-                                    handler:function(){
-                                        var f=Ext.getCmp('project_apply_final_process_add');
-                                        var index=f.items.length+1;
-                                        if(index>2){
-                                            alert('限填2项,无法继续添加信息了！');
-                                            return;
-                                        }
-                                        f.add({
-                                            xtype:'fieldset',
-                                            title: '最终成果 '+index,
-                                            anchor:'80%',
-                                            items:[
-                                                DefaultDateFeild({
-                                                  fieldLabel:'完成时间',
-                                                  name:'g__finalachive__end_time__'+index,
-                                                  anchor:'90%'
-                                                }),
-                                                {
-                                                  xtype : "textfield",
-                                                  fieldLabel:'最 终 成 果 名称',
-                                                  name:'g__finalachive__name__'+index,
-                                                  allowBlank:false,
-                                                  anchor:'90%'
-                                                },
-                                                {
-                                                  xtype : "textarea",
-                                                  anchor:'90%',
-                                                  allowBlank:false,
-                                                  name:'g__finalachive__atype__'+index,
-                                                  fieldLabel:'成果形式'
-                                                },
-                                                {
-                                                  xtype : "textfield",
-                                                  fieldLabel:'预计字数',
-                                                  name:'g__finalachive__font_num__'+index,
-                                                  vtype:'positive',
-                                                  allowBlank:false,
-                                                  anchor:'90%'
-                                                },
-                                                {
-                                                  xtype : "textfield",
-                                                  fieldLabel:'参 加 人',
-                                                  name:'g__finalachive__actor__'+index,
-                                                  allowBlank:false,
-                                                  anchor:'90%'
-                                                }
-                                            ]
-                                        });
-                                        f.doLayout(); 
+                                gname:'finalachive',
+                                citems:[
+                                    DefaultDateFeild({
+                                      fieldLabel:'完成时间',
+                                      name:'g__finalachive__end_time',
+                                      anchor:'90%'
+                                    })
+                                    ,
+                                    {
+                                      xtype : "textfield",
+                                      fieldLabel:'最 终 成 果 名称',
+                                      name:'g__finalachive__name',
+                                      allowBlank:false,
+                                      anchor:'90%'
+                                    },
+                                    {
+                                      xtype : "textarea",
+                                      anchor:'90%',
+                                      allowBlank:false,
+                                      name:'g__finalachive__atype',
+                                      fieldLabel:'成果形式'
+                                    },
+                                    {
+                                      xtype : "textfield",
+                                      fieldLabel:'预计字数',
+                                      name:'g__finalachive__font_num',
+                                      allowBlank:false,
+                                      vtype:'positive',
+                                      anchor:'90%'
+                                    },
+                                    {
+                                      xtype : "textfield",
+                                      fieldLabel:'参 加 人',
+                                      name:'g__finalachive__actor',
+                                      allowBlank:false,
+                                      anchor:'90%'
                                     }
-                                },{
-                                    text: '移除',
-                                    handler:function(){
-                                        var f=Ext.getCmp('project_apply_final_process_add');
-                                        var index=f.items.length;
-                                        if(index<=1)return;
-                                        var cmp=f.items.items[index-1];
-                                        f.remove(cmp,true);
-                                    }
-                                }]
-                            },
-                            {
+                                ]
+                            },{
                                 xtype:'fieldset',
                                 title: '经费预算',
                                 collapsible: true,
@@ -3009,8 +3307,17 @@ Ext.onReady(function () {
                                 text: '保存记录',
                                 handler:function(){
                                     var frm=Ext.getCmp('prject_apply_add');
-                                    // debugform(frm);
-                                    // return;
+                                    var flag=true;
+                                    frm.getForm().items.each(function(x) {
+                                        if (x.validate === undefined||!flag) {
+                                            return;
+                                        }
+                                        if( x.validate())return;
+                                        flag=false;
+                                        x.focus(false, 200);
+                                        alert('请正确填写红色下划线部分！');
+                                    });
+                                    
                                     if (!frm.getForm().isValid()) return; 
                                     frm.getForm().submit({
                                          waitMsg: '正在提交数据',
@@ -3037,8 +3344,8 @@ Ext.onReady(function () {
                                             else {
                                                 error('发生异常！');
                                             }
-                                            form.reset();
-                                            Main.tab_panel.remove(exisTab.id);
+                                            // form.reset();
+                                            // Main.tab_panel.remove(exisTab.id);
                                          }
                                     });
                                 }
@@ -3067,226 +3374,42 @@ Ext.onReady(function () {
                     pk:json.pk
                 },
                 success:function(response){
-                    var obj=Ext.decode(response.responseText);
+                    var json=Ext.decode(response.responseText);
                     var root = Main.tree.getRootNode();
                     Main.ShowProjectApply(obj);
-                    var form=Ext.getCmp('prject_apply_add');
-                    var items=form.getForm().items.items;
-
-                    var apply=obj.apply;
-                    var levelachives=obj.levelachives;
-                    var finalachives=obj.finalachives;
-                    var actors=obj.actors;
-
-                    for (var i = items.length - 1; i >= 0; i--) {
-                        var item=items[i];
-                        if(!apply.hasOwnProperty(item.name))continue;
-                        item.setValue(apply[item.name]);
-                    };
-
-                    //参与者
-                    var f=Ext.getCmp('project_apply_user_add'),index;
-                    for (index=1;index<actors.length;index++){
-                        f.add({
-                            xtype:'fieldset',
-                            title: '参加者信息 '+index,
-                            anchor:'80%',
-                            items:[
+                    var formPanel=Ext.getCmp('prject_apply_add');
+                    var form=formPanel.getForm();
+                    form.reset();
+                    var filed,value;
+                    var one2manys=formPanel.find('xtype','onetomanyfields');
+                    for(var obj in json){
+                        if(isArrary(json[obj])){
+                            var jarray=json[obj];
+                            var gfield=null;
+                            if(!one2manys||one2manys.length==0)continue;
+                            for (var i = one2manys.length - 1; i >= 0; i--) {
+                                gfield=one2manys[i];
+                                if(gfield.gname==obj)
                                 {
-                                  xtype : "textfield",
-                                  fieldLabel:'姓名',
-                                  allowBlank:false,
-                                  name:'g__actor__name__'+index,
-                                  anchor:'90%'
-                                },
-                                {
-                                    xtype:'combo',
-                                    mode:'local',
-                                    editable:false,
-                                    valueField:'name',
-                                    displayField:   'name',
-                                    fieldLabel : "职称",
-                                    triggerAction:  'all',
-                                    forceSelection: true,
-                                    name: 'g__actor__job_zc__s'+index,
-                                    hiddenName:'g__actor__job_zc__'+index,
-                                    anchor:'50%',
-                                    value:'讲师',
-                                    store:new Ext.data.JsonStore({
-                                        fields : ['name'],
-                                        data:[
-                                            {name:'讲师'},
-                                            {name:'副研究员'},
-                                            {name:'研究员'},
-                                            {name:'副教授'},
-                                            {name:'教授'}
-                                        ]
-                                    })
-                                },
-                                {
-                                    xtype:'combo',
-                                    mode:'local',
-                                    editable:false,
-                                    valueField:'name',
-                                    displayField:   'name',
-                                    fieldLabel : "职务",
-                                    triggerAction:  'all',
-                                    forceSelection: true,
-                                    name: 'g__actor__job_zw__s'+index,
-                                    hiddenName:'g__actor__job_zw__'+index,
-                                    anchor:'50%',
-                                    value:'讲师',
-                                    store:new Ext.data.JsonStore({
-                                        fields : ['name'],
-                                        data:[
-                                            {name:'司长'},
-                                            {name:'副司长'},
-                                            {name:'局长'},
-                                            {name:'副局长'},
-                                            {name:'厅长'},
-                                            {name:'副厅长'}
-                                        ]
-                                    })
-                                },
-                                {
-                                    xtype:'combo',
-                                    mode:'local',
-                                    editable:false,
-                                    valueField:'name',
-                                    displayField:   'name',
-                                    fieldLabel : "学位",
-                                    triggerAction:  'all',
-                                    forceSelection: true,
-                                    name: 'g__actor__degree__s'+index,
-                                    hiddenName:'g__actor__degree__'+index,
-                                    anchor:'50%',
-                                    value:'学士',
-                                    store:new Ext.data.JsonStore({
-                                        fields : ['name'],
-                                        data:[
-                                            {name:'学士'},
-                                            {name:'硕士'},
-                                            {name:'博士'},
-                                            {name:'博士后'}
-                                        ]
-                                    })
-                                },
-                                {
-                                  xtype : "textarea",
-                                  anchor:'90%',
-                                  name:'g__actor__desc__'+index,
-                                  allowBlank:false,
-                                  fieldLabel:'近几年与本课题相关的研究成果'
+                                    gfield.setValue(jarray);
+                                    break;
                                 }
-                            ]
-                        });
-                    };
-                    f.doLayout(); 
-
-                    //最终成果
-                    f=Ext.getCmp('project_apply_final_process_add');           
-                    for (index=1;index<finalachives.length;index++){
-                        f.add({
-                            xtype:'fieldset',
-                            title: '最终成果 '+index,
-                            anchor:'80%',
-                            items:[
-                                DefaultDateFeild({
-                                  fieldLabel:'完成时间',
-                                  name:'g__finalachive__end_time__1',
-                                  anchor:'90%'
-                                }),
-                                {
-                                  xtype : "textfield",
-                                  fieldLabel:'最 终 成 果 名称',
-                                  name:'g__finalachive__name_'+index,
-                                  allowBlank:false,
-                                  anchor:'90%'
-                                },
-                                {
-                                  xtype : "textarea",
-                                  anchor:'90%',
-                                  allowBlank:false,
-                                  name:'g__finalachive__atype_'+index,
-                                  fieldLabel:'成果形式'
-                                },
-                                {
-                                  xtype : "textfield",
-                                  fieldLabel:'预计字数',
-                                  name:'g__finalachive__font_num_'+index,
-                                  allowBlank:false,
-                                  vtype:'positive',
-                                  anchor:'90%'
-                                },
-                                {
-                                  xtype : "textfield",
-                                  fieldLabel:'参 加 人',
-                                  name:'g__finalachive__actor_'+index,
-                                  allowBlank:false,
-                                  anchor:'90%'
+                            };
+                           
+                        }else{
+                            fields=form.findField(obj);
+                            if(fields){
+                                value = json[obj];
+                                if(true==value){
+                                    value=1;
                                 }
-                            ]
-                        });
-                    };
-                    f.doLayout(); 
-
-                    //阶段性成果 
-                    f=Ext.getCmp('project_apply_pre_process_add');
-                    for (index=1;index<levelachives.length;index++){                   
-                        f.add({
-                            xtype:'fieldset',
-                            title: '阶段性成果 '+index,
-                            anchor:'80%',
-                            items:[
-                                {
-                                    xtype: 'compositefield',
-                                    fieldLabel: '研究阶段(起止时间)',
-                                    msgTarget : 'side',
-                                    anchor    : '-20',
-                                    defaults: {
-                                        flex: 1
-                                    },
-                                    items: [
-                                        DefaultDateFeild({
-                                            name : 'g__levelachive__start_time__'+index,
-                                            id:'papa_startdt_1',
-                                            endDateField: 'papa_enddt__'+index,
-                                            vtype:'daterange'
-                                        }),
-                                        DefaultDateFeild({
-                                            vtype:'daterange',
-                                            id:'papa_enddt__'+index,
-                                            startDateField: 'papa_startdt__'+index,
-                                            name : 'g__levelachive__end_time__'+index
-                                        })
-                                        
-                                    ]
-                                },
-                                {
-                                  xtype : "textfield",
-                                  fieldLabel:'阶 段 成 果 名 称',
-                                  allowBlank:false,
-                                  name:'g__levelachive__name__'+index,
-                                  anchor:'90%'
-                                },
-                                {
-                                  xtype : "textarea",
-                                  anchor:'90%',
-                                  allowBlank:false,
-                                  name:'g__levelachive__atype__'+index,
-                                  fieldLabel:'成果形式'
-                                },
-                                {
-                                  xtype : "textfield",
-                                  fieldLabel:'承 担 人',
-                                  name:'g__levelachive__apply_user__'+index,
-                                  allowBlank:false,
-                                  anchor:'90%'
+                                else if(false==value){
+                                    value=0;    
                                 }
-                            ]
-                        });
-                    }            
-                    f.doLayout(); 
+                                fields.setValue(value);
+                            }
+                        }
+                    }
                 }
             })
         }
@@ -4008,6 +4131,7 @@ Ext.onReady(function () {
         root.appendChild({
             text:'我的项目',
             leaf:true,
+            iconCls:'Driveuser',
             list:{
                 id:'my_project_grid',
                 url:"/project/apply/list/",
@@ -4123,7 +4247,7 @@ Ext.onReady(function () {
                         iconCls:'Bookopen',
                         handler:function(){
                             var grid=Ext.getCmp('my_project_grid');
-                            Main.ShowProjectEndApproveHistroy(grid);
+                            Main.ShowProjectApplyApproveHistory(grid,true);
                         }
                     }
                 ]
@@ -4133,6 +4257,7 @@ Ext.onReady(function () {
         root.appendChild({
             text:'新建项目',
             leaf:true,
+            iconCls:'Applicationadd',
             list:{
                 url:"/project/apply/list/",
                 baseParams:{
@@ -4178,7 +4303,7 @@ Ext.onReady(function () {
                         iconCls:'Applicationedit',
                         handler:function () {
                             var grid=Main.CurrentGrid();
-                            var sel= grid.getIdArr();
+                            var sel= grid.getJsonArr();
                             if(sel.length!=1){
                                 alert('请单选需要修改的项目！');
                                 return;
@@ -4214,15 +4339,18 @@ Ext.onReady(function () {
             text:'事务记录',
             expanded:true,
             leaf:false,
+            iconCls:'Database',
             children:[]
         };
 
         node.children.push({
             text:'变更',
             leaf:true,
+            iconCls:'Databaseedit',
             list:{
                 id:'applicant_project_exchange_gird',
                 url:"/project/exchange/list/",
+
                 columes:[
           
                     {header:'项目类型', dataIndex:'project_type__name', flex:1 },
@@ -4263,6 +4391,7 @@ Ext.onReady(function () {
         node.children.push({
             text:'结项',
             leaf:true,
+            iconCls:'Databasegear',
             list:{
                 id:'applicant_project_end_gird',
                 url:"/project/end/list/",
@@ -4307,6 +4436,7 @@ Ext.onReady(function () {
         node.children.push({
             text:'退回',
             leaf:true,
+            iconCls:'Databasego',
             list:{
                 id:'applicant_project_back_gird',
                 url:"/project/rollback/list/",
@@ -4348,6 +4478,7 @@ Ext.onReady(function () {
             text:'消息管理',
             expanded:true,
             leaf:false,
+            iconCls:'Comments',
             children:[]
         };
 
@@ -4356,6 +4487,7 @@ Ext.onReady(function () {
         node.children.push({
             text:'系统消息',
             leaf:true,
+            iconCls:'Computer',
             list:{
                 id:'wait_pub_message_list',
                 url:"/message/list/",
@@ -4365,7 +4497,7 @@ Ext.onReady(function () {
                     {header:'发送时间', dataIndex:'send_time', flex:1 },
                     {header:'发送人', dataIndex:'sender_name', flex:1 },
                     {header:'发送人姓名', dataIndex:'sender_real_name', flex:1 },
-                    {header:'发送人部门', dataIndex:'sender_unit__name', flex:1 },
+                    {header:'发送人单位', dataIndex:'sender_unit__name', flex:1 },
                     {dataIndex:'content'}
                 ],
                 viewConfig: {

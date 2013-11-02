@@ -10,6 +10,8 @@ class Const:
 	EXPERT='expert'
 	APPLICANT='applicant'
 
+	WEBROOT="localhost:8000"
+
 	HERE=''
 	DEBUG=False
 	CODE_FONT=None
@@ -21,7 +23,8 @@ class Const:
 	@staticmethod
 	def CodeFont():
 		if not Const.CODE_FONT:
-			Const.CODE_FONT=ImageFont.truetype(Const.HERE+'/msyh.ttf',14)
+			f=Const.HERE+'/msyh.ttf'
+			Const.CODE_FONT=ImageFont.truetype(f,14)
 		return Const.CODE_FONT
 
 def IsAdmin(user):
@@ -43,6 +46,7 @@ class StatusUnit:
 	APPROVE_FAIL=-2
 
 class StatusUser:
+	APPROVE_UNIT=-2
 	APPROVE=-1
 	NORMAL=0
 	APPROVE_FAIL=-2

@@ -24,7 +24,9 @@ urlpatterns += patterns('',
 
 	url(r'^main/$','core.views.main'),
 	url(r'^register/user/$','core.views.register_user'),
-	url(r'^register/unit/$','core.views.register_unit'),
+	url(r'^unit/register/add/$','core.views.unit_register_add'),
+        url(r'^register/unittype/$','core.views.unit_register_type'),
+	url(r'^unit/register/go/$', 'core.views.unit_register_go'),
  	url(r'^login/code/$','core.views.raw_code'),
 
 )
@@ -40,11 +42,13 @@ urlpatterns+=patterns('',
 	url('^user/details/$','core.views.user_detail'),
 	url('^user/approve/$','core.views.user_approve'),
 	url('^user/list/approve/$','core.views.user_list_approve'),
+	url('^user/register/$', 'core.views.register_user_go'),
+	url('^user/add/register/$', 'core.views.user_register_add'),
 
 	url('^user/name/$','core.views.user_name'),
-	url('^expert/set/', 'core.views.expert_set'),
+	url('^expert/set/', 'core.views.project_apply_expert_set'),
 	url('^expert/combo/$','core.views.expert_combo'),
-
+	url('^expert/recv/emails/$','core.views.expert_recv_email'),
 	url('^user/notify/count/$','core.views.admin_notify_count'),
 )
 
@@ -74,9 +78,10 @@ urlpatterns+=patterns('',
 	url('^project/search/$','core.views.project_search'),
 	url('^project/count/$','core.views.project_count'),
 
+	url('^projecttype/add/$','core.views.project_type_add'),
 	url('^projecttype/details/$','core.views.project_type_details'),
 	url('^projecttype/update/$','core.views.project_type_update'),
-
+	url('^projecttype/del/$','core.views.project_type_del'),
 
 	url('^project/rollback/add/$','core.views.project_rollback_add'),
 	url('^project/rollback/list/$','core.views.project_rollback_list'),
@@ -92,11 +97,14 @@ urlpatterns+=patterns('',
 	url('^project/exchange/approve/$','core.views.project_exchange_approve'),
 
 
+	url('^project/setexpert/apply/list/$', 'core.views.project_apply_send_expert_list'),
 	url('^projectapply/add/$', 'core.views.project_apply_add'),
 	url('^project/apply/list/$','core.views.project_apply_list'),
 	url('^project/apply/approve/$','core.views.project_apply_approve'),
 	url('^project/apply/submit/$','core.views.project_apply_submit'),
 	url('^project/apply/details/$','core.views.project_apply_details'),
+	url('^project/apply/expertapproves/$', 'core.views.project_apply_expertapproves_list'),
+	url('^project/apply/endexperttalk/$','core.views.project_apply_endexperttalk'),
 
 	#project_apply_details
 	url('^project/apply/showdetails/$','core.views.project_apply_show_details'),
@@ -113,6 +121,8 @@ urlpatterns+=patterns('',
 	url('^project/admin/end/approves/$', 'core.views.project_admin_end_all_approves'),
 	url('^project/admin/back/approves/$', 'core.views.project_admin_back_all_approves'),
 	url('^project/admin/exchange/approves/$', 'core.views.project_admin_exchange_all_approves'),
+
+
 )
 
 
@@ -123,21 +133,19 @@ urlpatterns+=patterns('',
 	url('^message/add/$','core.views.message_add'),
 	url('^message/notify/$','core.views.message_notify'),
 	url('^message/pub/$','core.views.message_pub'),
-	url('^message/show/details/','core.views.message_details'),
+	url('^message/show/details/$','core.views.message_details'),
 	url('^message/message_recvier_combo/$','core.views.message_recvier_combo'),
 	url('^message/sended/list/$','core.views.message_sended_list')
 )
 
 #document
 urlpatterns+=patterns('',
-#	url('^raw/doc/(?P<url>.*)$', 'core.views.raw_doc'),
-#	url('^open/project/apply/doc/(?P<pk>\d+)/$','core.views.raw_project_apply_doc'),
-#
-#	url('^raw/pdf/(?P<url>.*)$','core.views.raw_pdf'),
-#	url('^open/project/apply/pdf/(?P<pk>\d+)/$','core.views.raw_project_apply_pdf')
+
+	url('^unit/projecttype/limits/$','core.views.unit_project_type_limits'),
 	url('^document/download/(?P<pk>\d+)/$', 'core.views.download_document'),
 	url('^project/apply/pdf/download/(?P<pk>\d+)/$', 'core.views.download_project_apply_pdf'),
 	url('^project/admin/project/done/xls/export/$','core.views.download_project_admin_apply_all_approves_excel'),
+	url('^project/admin/project/search/xls/export/$','core.views.download_project_admin_search_projects_excel'),
 	url('^project/apply/doc/upload/$', 'core.views.upload_project_apply_doc'),
 	url('^temp/project_apply/doc/$', 'core.views.download_project_apply_doc_temp'),
 )

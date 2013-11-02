@@ -1,15 +1,15 @@
 #coding=utf-8
 # Create your views here.
 from django.db import transaction
-from django.http import Http404, HttpResponse, HttpResponseRedirect
+from django.http import Http404, HttpResponse
 from django.shortcuts import render_to_response
 from django.db.models import Q
 from core.models import *
-
+from django.db.models import Sum
 from tools.const import  StatusUser, StatusUnit, IsAdmin, IsApplicant, IsExpert, IsSysAdmin, ApproveStatus, StatusApprove, ProjectStatus
-from tools.decorator import Ajax, Users, Auth, dumps
-from tools.helper import CallBack, ErrCallBack, CurPage, StartLimit, IdArray, GetParam,\
-FillModel, Items, Str2DateTime, TryGetParam, GetArrayParams, RawDoc, OK, WriteDictToExcel, ExcelRender
+from tools.decorator import Ajax, Auth, dumps
+from tools.helper import CallBack, CurPage, StartLimit, IdArray, GetParam,\
+FillModel, Items, Str2DateTime, TryGetParam, GetArrayParams, RawDoc, OK, WriteDictToExcel, ExcelRender, EmailNotify, ErrCallBack, Email,FilGModel
 #############################################
 #公共模块
 #############################################
@@ -33,16 +33,31 @@ def login(request):
 	else:
 		user= user[0]
 		request.session[Const.User] =user
-		types = ''
-		for p in ProjectType.objects.all().values('pk', 'name'):
-			if types: types += ';'
-			types += str(p['pk']) + ',' + p['name']
+
+		if not user.unit.level:# L0
+			types = ''
+			for p in ProjectType.objects.all() :
+				if types: types += ';'
+				types += str(p.pk) + ',' + p.name
+		else:
+			types = ''
+			for p in UnitLimitProjectType.objects.filter(unit_id=user.unit_id).all():
+				if types: types += ';'
+				types += str(p.project_type_id) + ',' + p.project_type.name
+
+
 
 		user.login_count+=1
 		user.last_activity_ip=user.get_client_ip(request)
 
 		user.save()
-		return render_to_response('main.html', {'user': user, 'project_types': types})
+		admin=User.objects.filter(unit_id=user.unit_id,role__code=Const.ADMIN).all()[0]
+		return render_to_response('main.html', {
+			'user': user,
+                        'project_types': types,
+			'admin_phone':admin.phone,
+		        'admin_real_name':admin.real_name
+		})
 
 
 @Ajax
@@ -60,16 +75,144 @@ def register_user(request):
 	u.save()
 	return CallBack('用户注册信息已提交，等待管理员审核！')
 
+def register_user_go(request):
+	units=Unit.objects.filter(status=StatusUnit.NORMAL).all()
+	roles=Role.objects.filter(Q(code__in=(Const.APPLICANT,))).all()
+	return render_to_response('login/reg.htm',{
+		'message':'',
+		'units':units,
+		'roles':roles
+	})
 
-@Ajax
-def register_unit(request):
-	register_unit_values = ('name', 'address', 'parent_unit_id', 'phone')
-	kv = GetParam(request, *register_unit_values)
-	u = Unit()
-	FillModel(kv, u)
-	u.status = StatusUnit.APPROVE
+
+def user_register_add(request):
+	kv =GetParam(request, 'name',
+	             'password',
+	             'user_sex',
+	             'user_role',
+	             'user_unit_1',
+	             'user_unit_2',
+	             'user_unit_3',
+	             'phone',
+	             'identitycard',
+	             'email',
+	             'code',
+	             'mobile')
+
+	if request.session['verify'] != kv['code']:
+		return render_to_response('login/reg.htm',{
+			'message': '验证码错误！'
+		})
+
+	u=User()
+	utid=int(kv['user_unit_3'])
+	if not utid:utid=int(kv['user_unit_2'])
+	if not utid:utid=int(kv['user_unit_1'])
+	assert utid!=0
+	u.name=kv['name']
+	u.password=kv['password']
+	u.sex=kv['user_sex']=="1"
+	u.role_id=int( kv['user_role'])
+	u.unit_id=utid
+	u.status=StatusUser.APPROVE
+	u.mobile=kv['mobile']
+	u.phone=kv['phone']
+	u.identitycard=kv['identitycard']
+	u.email=kv['email']
 	u.save()
-	return CallBack('单位注册信息已提交，等待管理员审核！')
+	return render_to_response('login/reg.htm',{
+		'message':'注册信息已提交，等待本单位管理员审核！',
+	})
+
+
+
+def unit_register_go(request):
+	kv=GetParam(request,'level')
+	units=Unit.objects.filter(Q(status=StatusUnit.NORMAL)).all()
+	return render_to_response('login/unitregister.htm',{
+		'level':kv['level'],
+		'units':units
+	})
+
+def unit_register_type(request):
+	return render_to_response('login/unitregtype.htm',{
+		'message':'单位注册信息已提交，等待管理员审核！',
+	})
+
+
+def unit_register_add(request):
+
+	register_unit_values = (
+		'name',
+	        'address',
+		'level',
+	        'owner_unit_id',
+	        'phone',
+	        'address',
+	        'unit_code',
+		'aname',
+		'password',
+		'email',
+		'user_sex',
+		'mobile',
+		'identitycard',
+		'jobunit',
+		'code'
+		# 'orgcode',
+	)
+
+
+	kv = GetParam(request, *register_unit_values)
+
+	if request.session['verify'] != kv['code']:
+		return render_to_response('login/ureg.htm',{
+			'message': '验证码错误！'
+		})
+
+	#save unit
+	orgcode=TryGetParam(request,'orgcode')
+	faren=TryGetParam(request,'faren')
+	zipcode=TryGetParam(request,'zipcode')
+	level=int(kv['level'])
+	if User.objects.filter(name=kv['name']).count()>0:
+		return render_to_response('login/ureg.htm',{
+			'message':'管理员用户名已经存在！',
+		})
+	pu=Unit.objects.get(pk=int(kv['owner_unit_id']))
+	u = Unit()
+	u.name=kv['name']
+	u.address=kv['address']
+	u.parent_unit=pu
+	u.phone=kv['phone']
+	if level==2:
+		u.no=pu.no
+	else:
+		u.no=kv['unit_code']
+	u.status = StatusUnit.APPROVE
+	if orgcode:u.orgcode=orgcode.value
+	if faren:u.faren=faren.value
+	if zipcode:u.zipcode=zipcode.value
+	u.save()
+	#save admin
+	user=User()
+	user.name=kv['aname']
+	user.password=kv['password']
+	user.sex=kv['user_sex']=="1"
+	r=Role.objects.filter(code=Const.ADMIN).all()[0]
+	user.role=r
+	user.unit=u
+	user.mobile=kv['mobile']
+	user.phone=kv['phone']
+	user.identitycard=kv['identitycard']
+	user.email=kv['email']
+	user.jobunit=kv['jobunit']
+
+	user.status=StatusUser.APPROVE_UNIT
+	user.save()
+	return render_to_response('login/ureg.htm',{
+		'message':'单位注册信息已提交，等待管理员审核！',
+	})
+
 
 
 def main(request):
@@ -81,55 +224,90 @@ def main(request):
 		types += str(p['pk']) + ',' + p['name']
 	return render_to_response('main.html', {'user': user, 'project_types': types})
 
+
 #############################################
 #用户管理
 #############################################
 @Ajax
 def user_list(request):
 	user_list_values = (
-	'pk', 'name', 'real_name', 'unit__name', 'unit__level', 'unit__parent_unit__name', 'role__name')
+	'pk', 'name',
+	'real_name',
+	'unit__name',
+	'unit__level',
+	'unit__parent_unit__name',
+	'role__name')
+
 	start, limit = StartLimit(request)
 	user = Auth(request, Const.ADMIN)
 	if not user: raise Http404
 
 	if IsSysAdmin(user):
-		items = User.objects.filter(
-			status=StatusUser.NORMAL,
-		).order_by('unit__level').values(*user_list_values)[start:limit]
-		total = User.objects.filter(
-			status=StatusUser.NORMAL,
-		).count()
-		return CurPage(total, items)
-
+		filters=[Q(status=StatusUser.NORMAL),Q(unit__level=1)]
 	else:
-		items = User.objects.filter(
-			~(Q(role__code=Const.ADMIN)&Q(unit_id=user.unit_id)),#无法修改本单位管理员
-			Q(status=StatusUser.NORMAL),
-			Q(unit__parent_unit_id=user.unit.id) | Q(unit_id=user.unit.id)
-		).order_by('unit__level').values(*user_list_values)[start:limit]
-		total = User.objects.filter(
-			Q(status=StatusUser.NORMAL),
-			Q(unit__parent_unit_id=user.unit.id) | Q(unit_id=user.unit.id)
-		).count()
-		return CurPage(total, items)
+		#无法修改本单位管理员
+		filters= [
+			~(Q(role__code=Const.ADMIN) & Q(unit_id=user.unit_id)),
+		        Q(status=StatusUser.NORMAL),
+			Q(unit__parent_unit_id=user.unit.id)| Q(unit_id=user.unit.id)
+		]
+	items = User.objects.filter(*filters).order_by('unit__level').values(*user_list_values)[start:limit]
+	total = User.objects.filter(*filters).count()
 
+	return CurPage(total, items)
 
+#设置专家评审
+import socket
 @Ajax
-def expert_set(request):
+def project_apply_expert_set(request):
 	Auth(request)
-	kv = GetParam(request, 'ids', 'expert_ids')
-	experts = User.objects.filter(id__in=IdArray(kv['expert_ids']))
-	projectapplys=ProjectApply.objects.filter(id__in=IdArray(kv['ids']))
-	for p in projectapplys:
-		for e in experts:
-			pe=ProjectApplyExpert()
-			pe.expert=e
-			pe.apply=p
-			pe.save()
-		p.status=StatusApprove.WAIT_EXPERT
-		p.save()
-	return CallBack('设置成功，等待专家审核！')
+	@transaction.commit_on_success
+	def runTran():
+		kv = GetParam(request, 'ids', 'expert_ids')
+		experts = User.objects.filter(id__in=IdArray(kv['expert_ids']))
+		projectapplys=ProjectApply.objects.filter(id__in=IdArray(kv['ids']))
 
+		#remove prevs
+		# ProjectApplyExpert.objects.filter(apply_id__in=IdArray(kv['ids'])).delete()
+
+		for p in projectapplys:
+			expert_names=[]
+			expert_emails=[]
+
+			for e in experts:
+				pe= ProjectApplyExpert.objects.filter(
+					expert_id=e.id,
+                                        apply_id=p.id)
+				if pe.count()>0:
+					pe=pe[0]
+				else:
+					#add new
+					pe=ProjectApplyExpert()
+					pe.expert=e
+					pe.apply=p
+					pe.email_key=Guid()
+					expert_names.append(e.name)
+					pe.save()
+
+				url=Const.WEBROOT+'/expert/recv/emails/?pek='+str(pe.pk)+'&key='+pe.email_key
+				message="您有新的项目<"+p.project_name+">等待评审，<br/>"
+				message+="<a href='http://"+url+"'>点击链接向管理员确认收到提示</a><br/>"
+				message+="您的用户名为：%s 密码为：%s" % (e.name,e.password)
+				expert_emails.append(Email(e.email,message))
+
+
+			p.status=StatusApprove.WAIT_EXPERT
+			p.expert_names=';'.join(expert_names)
+			p.expert_post_num=0
+			p.expert_recv_num=ProjectApplyExpert.objects.filter( apply_id=p.id).count()
+			p.save()
+
+
+			EmailNotify(expert_emails)
+
+		return CallBack('设置成功，等待专家审核！')
+
+	runTran()
 
 @Ajax
 def user_name(request):
@@ -141,6 +319,9 @@ def user_name(request):
 
 
 
+
+
+
 @Ajax
 def user_list_approve(request):
 	user_list_approve_values = (
@@ -148,24 +329,25 @@ def user_list_approve(request):
 	start, limit = StartLimit(request)
 	user = Auth(request, Const.ADMIN)
 	if not user: raise Http404
-	if IsSysAdmin(user):
-		items = User.objects.filter(
-			status=StatusUser.APPROVE,
-		).order_by('unit__level').values(*user_list_approve_values)[start:limit]
-		total = User.objects.filter(
-			status=StatusUser.APPROVE,
-		).count()
-		return CurPage(total, items)
-	else:
-		items = User.objects.filter(
-			Q(status=StatusUser.APPROVE),
-			Q(unit__parent_unit_id=user.unit.id) | Q(unit_id=user.unit.id)
-		).order_by('unit__level').values(*user_list_approve_values)[start:limit]
-		total = User.objects.filter(
-			Q(status=StatusUser.APPROVE),
-			Q(unit__parent_unit_id=user.unit.id) | Q(unit_id=user.unit.id)
-		).count()
-		return CurPage(total, items)
+	filters=[Q(status=StatusUser.APPROVE)]
+	if not IsSysAdmin(user):
+		filters.append(Q(unit_id=user.unit.id))
+		#Q(unit__parent_unit_id=user.unit.id)
+
+	items = User.objects.filter(*filters).order_by('unit__level').values(*user_list_approve_values)[start:limit]
+	total = User.objects.filter(*filters).count()
+	return CurPage(total, items)
+
+
+@Ajax
+def user_approve(request):
+	Auth(request, Const.ADMIN)
+	kv = GetParam(request, 'ids', 'pass', 'option')
+	success=bool(kv['pass'] == 'true')
+	use_status = StatusUser.NORMAL if success\
+	else StatusUser.APPROVE_FAIL
+	User.objects.filter(id__in=IdArray(request.POST.get('ids'))).update(status=use_status)
+	return CallBack(Const.OK)
 
 
 @Ajax
@@ -209,9 +391,7 @@ def user_update(request):
 	kv = GetParam(request, *user_update_values)
 	u = User.objects.get(pk=int(kv['pk']))
 	FillModel(kv, u)
-
 	u.save()
-	print 'ok'
 	return CallBack(Const.OK)
 
 
@@ -231,16 +411,6 @@ def user_show_detail(request):
 	return render_to_response('user_details.html', {'obj': obj})
 
 
-@Ajax
-def user_approve(request):
-	Auth(request, Const.ADMIN)
-	kv = GetParam(request, 'ids', 'pass', 'option')
-	success=bool(kv['pass'] == 'true')
-	use_status = StatusUser.NORMAL if success\
-	else StatusUser.APPROVE_FAIL
-	User.objects.filter(id__in=IdArray(request.POST.get('ids'))).update(status=use_status)
-	return CallBack(Const.OK)
-
 
 #############################################
 #combo
@@ -250,22 +420,41 @@ def unit_combo(request):
 	user=Auth(request,Const.ADMIN)
 	unit_combo_values = ('pk', 'name')
 	filters=[Q(status=StatusUnit.NORMAL)]
+	r=TryGetParam(request,'belong_unit_id')
+	if r:
+		filters.append(~Q(pk=r.value))
+		filters.append(Q(level__lt=3))
+
 	if not IsSysAdmin(user):
 		filters.append(Q(pk=user.unit_id)|Q(parent_unit_id=user.unit_id))
-	items = Unit.objects.filter(*filters).order_by('level').values(*unit_combo_values)
-	return Items(items)
+
+	r=TryGetParam(request,'show_parent')
+	if r:
+		items=[]
+		for u in Unit.objects.filter(*filters).order_by('level').values('pk','name','parent_unit__name','level'):
+			name=u['name']
+			if u['parent_unit__name']:
+				name=u['parent_unit__name']+'/'+name
+			items.append({
+				'pk':u['pk'],
+			        'name':name
+			})
+		return Items(items)
+	else:
+		return Items(Unit.objects.filter(*filters).order_by('level').values(*unit_combo_values))
+
 
 
 @Ajax
 def role_combo(request):
 	user=Auth(request,Const.ADMIN)
-	filter=[]
+	qfilter=[]
 	if user.unit.level==2:
-		filter.append(~Q(code=Const.EXPERT))
-		filter.append(~Q(code=Const.ADMIN))
+		qfilter.append(~Q(code=Const.EXPERT))
+		qfilter.append(~Q(code=Const.ADMIN))
 	elif user.unit.level==1:
-		filter.append(~Q(code=Const.EXPERT))
-	items = Role.objects.filter(*filter).order_by('level').values('pk', 'name')
+		qfilter.append(~Q(code=Const.EXPERT))
+	items = Role.objects.filter(*qfilter).order_by('level').values('pk', 'name')
 	return Items(items)
 
 
@@ -281,6 +470,15 @@ def projecttype_combo(request):
 		projecttype_combo_values = ('pk', 'name')
 		items = ProjectType.objects.all().values(*projecttype_combo_values)
 		return  Items(items)
+
+
+def expert_recv_email(request):
+	kv=GetParam(request,'pek','key')
+	pe=ProjectApplyExpert.objects.get(pk=int(kv['pek']))
+	if pe.email_key!=kv['key']:raise Http404
+	pe.email_back=1
+	pe.save()
+	return render_to_response('login/msg.htm', {'message': '您的邮件回执已经提交！'})
 
 
 @Ajax
@@ -301,55 +499,112 @@ def unit_list(request):
 	                    'max_project', 'apply_starttime', 'apply_endtime', 'address', 'level','no')
 	start, limit = StartLimit(request)
 	user = Auth(request, Const.ADMIN)
-	if user:
-		condition=[Q(status=StatusUnit.NORMAL),
-		           Q(level__gte=user.unit.level),~Q(parent_unit__id=0)]
 
-		items = Unit.objects.filter(
-			*condition
-		).order_by('level').values(*unit_list_values)[start:limit]
-		total = Unit.objects.filter(
-			*condition).count()
-		return CurPage(total, items)
+	if IsSysAdmin(user):
+		condition=[Q(status=StatusUnit.NORMAL),Q(level=1)]
 	else:
-		raise Http404
+		condition=[Q(parent_unit_id=user.unit.id)|Q(id=user.unit.id),Q(status=StatusUnit.NORMAL)]
+
+	items = Unit.objects.filter(
+		*condition
+	).order_by('level').values(*unit_list_values)[start:limit]
+	total = Unit.objects.filter(
+		*condition).count()
+	return CurPage(total, items)
 
 
 @Ajax
 def unit_list_approve(request):
 	unit_list_approve_values = ('pk', 'name', 'parent_unit__name',
-	                            'project_type__name', 'address', 'level', 'regtime')
+	                            'max_project', 'address', 'level', 'regtime')
 	start, limit = StartLimit(request)
 	user = Auth(request, Const.ADMIN)
-	if user:
-		items = Unit.objects.filter(
-			status=StatusUnit.APPROVE,
-			level__gte=user.unit.level
-		).order_by('level').values(*unit_list_approve_values)[start:limit]
-		total = Unit.objects.filter(status=StatusUnit.APPROVE).count()
-		return CurPage(total, items)
+	if IsSysAdmin(user):
+		condition=[Q(status=StatusUnit.APPROVE)]
 	else:
-		raise Http404
+		condition=[Q(parent_unit_id=user.unit.id)| Q(id=user.unit.id),Q(status=StatusUnit.APPROVE)]
+
+	items = Unit.objects.filter(*condition).order_by('level').values(*unit_list_approve_values)[start:limit]
+	total = Unit.objects.filter(*condition).count()
+
+	return CurPage(total, items)
+
+
+
+
+@Ajax
+def unit_project_type_limits(request):
+	Auth(request,Const.ADMIN)
+	kv=GetParam(request,'unit_id')
+	unit=Unit.objects.get(pk=int(kv['unit_id']))
+	result=[]
+	if unit.parent_unit:
+		ptypes= UnitLimitProjectType.objects.filter(unit_id=unit.pk).all()
+		cIdArray=[int(k['pk']) for k in Unit.objects.filter(parent_unit_id=unit.pk).all().values('pk')]
+		for p in ptypes:
+			used=UnitLimitProjectType.objects.filter(
+				unit_id__in=cIdArray,
+                                project_type_id=p.project_type_id).aggregate(Sum('max_project_num'))
+			used=used.get('max_project_num__sum')
+			if not used:used=0
+			leave=p.max_project_num-used
+			result.append({
+				'pk':p.project_type_id,
+				'name':p.project_type.name,
+				'limit':leave
+			})
+	else:
+		ptypes= ProjectType.objects.all()
+		for p in ptypes:
+			result.append({
+				'pk':p.pk,
+			        'name':p.name,
+			        'limit':p.max_project_num
+			})
+	return result
 
 
 @Ajax
 def unit_add(request):
-	unit_add_values = ('name', 'parent_unit_id', 'project_type_id',
-	                   'max_project', 'address', 'phone','no')
+	unit_add_values = (
+		'name',
+		'parent_unit_id',
+		'g__ptype__project_type_id',
+		'g__ptype__max_project_num',
+		'apply_starttime',
+		'apply_endtime',
+		'address',
+		'phone',
+		'no'
+	)
 	kv = GetParam(request, *unit_add_values)
 	user = Auth(request, Const.ADMIN)
 	if user:
 		@transaction.commit_on_success
 		def runTran():
+			parent_unit=Unit.objects.get(pk=int(kv['parent_unit_id']))
+			if parent_unit.level==2:
+				return CallBack('系统暂时不支持四级部门！')
+
+			if parent_unit.level==1:
+				kv['no']=parent_unit.no
+
 			ut = Unit()
-			FillModel(kv, ut,exclude=['project_type_id'])
-			project_types=request.POST.getlist('project_type_id')
+			FillModel(kv, ut)
 			ut.save()
-			for p in project_types:
+			ptids=kv['g__ptype__project_type_id']
+			maxp=kv['g__ptype__max_project_num']
+			count=len(ptids)
+			max_num=0
+			for index in xrange(count):
 				ul=UnitLimitProjectType()
-				ul.project_type_id=int(p)
-				ul.unit_id=ut.id
+				ul.project_type_id=ptids[index]
+				ul.unit_id=ut.pk
+				ul.max_project_num=int(maxp[index])
+				max_num+=ul.max_project_num
 				ul.save()
+			ut.max_project=max_num
+			ut.save()
 		runTran()
 		return CallBack(Const.OK)
 	else:
@@ -359,22 +614,56 @@ def unit_add(request):
 @Ajax
 def unit_update(request):
 	if not Auth(request, Const.ADMIN):raise Http404
-
-	unit_update_values = ('pk', 'name', 'parent_unit_id', 'project_type_id', 'address',
-	                      'max_project', 'apply_starttime', 'apply_endtime','no')
+	unit_update_values = ('pk',
+	                      'name',
+	                      'parent_unit_id',
+	                      'address',
+	                      'apply_starttime',
+	                      'apply_endtime',
+	                      'g__ptype__pk',
+	                      'g__ptype__project_type_id',
+	                      'g__ptype__max_project_num',
+	                      'no')
 	kv = GetParam(request, *unit_update_values)
 	@transaction.commit_on_success
 	def runTran():
+		parent_unit=Unit.objects.get(pk=int(kv['parent_unit_id']))
+		if parent_unit.level==2:
+			return CallBack('系统暂时不支持四级部门！')
+
+
+
 		u = Unit.objects.get(pk=int(kv['pk']))
-		FillModel(kv, u,exclude=['project_type_id'])
-		UnitLimitProjectType.objects.filter(unit_id=u.id).delete()
-		uls=request.POST.getlist('project_type_id')
-		for pk in uls:
-			ul=UnitLimitProjectType()
-			ul.project_type_id=int(pk)
-			ul.unit_id=u.id
+		FillModel(kv, u)
+		lids=kv['g__ptype__pk']
+		index=0
+		max_num=0
+		limitstypes=[]
+		for ulid in lids:
+			if ulid:
+				ul=UnitLimitProjectType.objects.get(pk=int(ulid))
+			else:
+				ul=UnitLimitProjectType()
+			ul.unit_id=u.pk
+			ul.project_type_id=kv['g__ptype__project_type_id'][index]
+			ul.max_project_num=int(kv['g__ptype__max_project_num'][index])
+			max_num+=ul.max_project_num
 			ul.save()
+			limitstypes.append(ul.project_type_id)
+			index+=1
+		u.max_project=max_num
 		u.save()
+		child_ids=[]
+
+		child_ids.extend([k['pk'] for k in Unit.objects.filter(parent_unit_id=u.id).values('pk')])
+		if u.level==1:
+			child_ids.extend([k['pk'] for k in Unit.objects.filter(parent_unit_id__in=child_ids).values('pk')])
+
+
+		UnitLimitProjectType.objects.filter(
+			Q(unit_id__in=child_ids),
+                        ~Q(project_type__in=limitstypes)).delete()
+
 	runTran()
 	return CallBack(Const.OK)
 
@@ -382,18 +671,13 @@ def unit_update(request):
 @Ajax
 def unit_details(request):
 	unit_details_values = ('pk', 'name', 'parent_unit_id', 'address', 'phone',
-	                       'max_project', 'apply_starttime', 'apply_endtime','no')
+	                       'max_project', 'apply_starttime', 'apply_endtime','no','level')
 	kv = GetParam(request, 'id')
-
 	obj= Unit.objects.filter(pk=int(kv['id'])).values(*unit_details_values)[0]
-
-	ptypes= UnitLimitProjectType.objects.filter(unit_id=int(kv['id'])).\
-	values('project_type__pk')
-	ptypes_array=[]
-	for p in ptypes:
-		ptypes_array.append(str(p['project_type__pk']))
-	obj['project_type_id']=','.join(ptypes_array)
+	ptypes= UnitLimitProjectType.objects.filter(unit_id=int(kv['id'])).values('pk','project_type_id','max_project_num')
+	obj['ptype']=ptypes
 	return obj
+
 @Ajax
 def unit_del(request):
 	kv = GetParam(request, 'ids')
@@ -409,7 +693,11 @@ def unit_approve(request):
 	if Auth(request, Const.ADMIN):
 		success=bool(kv['pass'] == 'true')
 		unit_status = StatusUnit.NORMAL if success else StatusUnit.APPROVE_FAIL
-		Unit.objects.filter(id__in=IdArray(request.POST.get('ids'))).update(status=unit_status)
+		ids=IdArray(request.POST.get('ids'))
+		Unit.objects.filter(id__in=ids).update(status=unit_status)
+		User.objects.filter(unit_id__in=ids,status=StatusUser.APPROVE_UNIT).\
+			update(status=StatusUser.NORMAL)
+		return OK
 	else:
 		raise Http404
 
@@ -522,7 +810,8 @@ def project_search(request):
 
 	elif status<2:
 		conditions.append(Q(status=status))
-
+	#save condition to export excel
+	request.session['csearch']=conditions
 	items = Project.objects.filter(*conditions).values('pk', 'name', 'no', 'status',
 		'applicant_time', 'unit__name', 'unit__level', 'ptype__name')[start:limit]
 	total = Project.objects.filter(*conditions).count()
@@ -756,7 +1045,7 @@ def project_end_add(request):
 
 
 
-#todo unit
+
 @Ajax
 def project_end_approve(request):
 	def ProceedApprove(user, success):
@@ -870,19 +1159,19 @@ def project_apply_show_details(request):
 	Auth(request)
 	kv = GetParam(request, 'pk')
 	pk = kv['pk']
-	apply = ProjectApply.objects.get(pk=int(pk))
-	proejct=apply.GetProject()
-	apply.project_status='未立项' if not proejct else ProjectStatus.get(proejct.status)
-	return render_to_response('project_apply_details.html', {'obj': apply})
+	applyObj = ProjectApply.objects.get(pk=int(pk))
+	proejct=applyObj.GetProject()
+	applyObj.project_status='未立项' if not proejct else ProjectStatus.get(proejct.status)
+	return render_to_response('project_apply_details.html', {'obj': applyObj})
 
 @Ajax
 def admin_notify_count(request):
-	user=Auth(request,Const.ADMIN)
+	user=Auth(request,Const.ADMIN,Const.EXPERT)
 	def ProjectApplyCount(admin_ask_expert):
 		if user.unit.level == 0:
 			#科技局查看 待审核
 			if admin_ask_expert:
-				q = Q(status=StatusApprove.WAIT_SET_EXPERT)
+				q = Q(status=StatusApprove.WAIT_SET_EXPERT)| Q(status=StatusApprove.WAIT_EXPERT)
 			else:
 				q = Q(status=StatusApprove.WAIT_ADMIN_0)
 		elif user.unit.level == 1:
@@ -894,6 +1183,9 @@ def admin_notify_count(request):
 		else:
 			raise Http404
 		return ProjectApply.objects.filter(q).count()
+
+	def ProjectApplyWaitLook():
+		return ProjectApply.objects.filter(status=StatusApprove.WAIT_AMIDN_0_LOOK).count()
 
 	def ProejctExchangeCount():
 
@@ -941,13 +1233,44 @@ def admin_notify_count(request):
 			raise Http404
 		return ProjectRollbackApply.objects.filter(q).count()
 
+	def UserApproveCount():
+		filters=[Q(status=StatusUser.APPROVE)]
+		if not IsSysAdmin(user):
+			filters.append(Q(unit_id=user.unit.id))
+
+		return User.objects.filter(*filters).count()
+
+	def UnitApproveCount():
+		if IsSysAdmin(user):
+			condition=[Q(status=StatusUnit.APPROVE)]
+		else:
+			condition=[Q(parent_unit_id=user.unit.id)| Q(id=user.unit.id),Q(status=StatusUnit.APPROVE)]
+		return Unit.objects.filter(*condition).count()
+
+
+
+	def ExpertTask(bApproved):
+		pes= ProjectApplyExpert.objects.filter(
+			expert_id=user.pk,
+                        approved=bApproved).values('apply_id')
+		idApplys=[int(p['apply_id']) for p in pes]
+		q =  Q(id__in=idApplys)&Q(status=StatusApprove.WAIT_EXPERT)
+		return ProjectApply.objects.filter(q).count()
+
 	result={}
-	if user.unit.level == 0:
-		result['apply_ask_expert']=ProjectApplyCount(True)
-	result['apply']=ProjectApplyCount(False)
-	result['back']=ProjectBackCount()
-	result['end']=ProjectEndCount()
-	result['exchange']=ProejctExchangeCount()
+	if IsAdmin(user):
+		if user.unit.level == 0:
+			result['apply_ask_expert']=ProjectApplyCount(True)
+		result['apply']=ProjectApplyCount(False)
+		result['back']=ProjectBackCount()
+		result['end']=ProjectEndCount()
+		result['exchange']=ProejctExchangeCount()
+		result['look']=ProjectApplyWaitLook()
+		result['user_approve']=UserApproveCount()
+		result['unit_approve']=UnitApproveCount()
+	elif IsExpert(user):
+		result['waitapprove']=ExpertTask(False)
+		result['approved']=ExpertTask(True)
 	return result
 
 @Ajax
@@ -958,7 +1281,7 @@ def project_apply_list(request):
 			if user.unit.level == 0:
 				#等待专家评审
 				if TryGetParam(request, 'admin_ask_expert'):
-					q = Q(status=StatusApprove.WAIT_SET_EXPERT)
+					q = Q(status=StatusApprove.WAIT_SET_EXPERT)|Q(status=StatusApprove.WAIT_EXPERT)
 				#等待民委审查
 				elif TryGetParam(request,'wait_admin_look'):
 					q = Q(status=StatusApprove.WAIT_AMIDN_0_LOOK)
@@ -994,27 +1317,54 @@ def project_apply_list(request):
 				q&=(~Q(status=StatusApprove.WAIT_SUBMIT))
 			return q
 		elif IsExpert(user):
-			pes= ProjectApplyExpert.objects.filter(expert_id=user.pk).values('apply_id')
-			idApplys=[int(p['apply_id']) for p in pes]
-			q =  Q(id__in=idApplys)
 			r= TryGetParam(request,'waitoption')
-			if r:
-				q&=Q(status=StatusApprove.WAIT_EXPERT)
-			else:
-				q&=~Q(status=StatusApprove.WAIT_EXPERT)
+			approved=not bool(r)
+			pes= ProjectApplyExpert.objects.filter(expert_id=user.pk,approved=approved).values('apply_id')
+			idApplys=[int(p['apply_id']) for p in pes]
+			q =  Q(id__in=idApplys)&Q(status=StatusApprove.WAIT_EXPERT)
 			return q
 		raise Http404
 
 	Auth(request)
-	project_apply_list = ('pk', 'project_name',
-	                      'project_type__name', 'project_no', 'applicant_time', 'status','study_type_name','project_comple_time')
-	start, limit = StartLimit(request)
+	project_apply_list = ('pk',
+	                      'project_name',
+	                      'project_type__name',
+	                      'project_no',
+	                      'applicant_time', 'status',
+	                      'study_type_name',
+	                      'project_comple_time',
+	                      'expert_percent',
+	                      'expert_post_num',
+	                      'expert_recv_num')
 
+	start, limit = StartLimit(request)
 	user_filert = ProjectApplyList(request)
 	items = ProjectApply.objects.filter(user_filert).values(*project_apply_list)[start:limit]
 	total = ProjectApply.objects.filter(user_filert).count()
 	return CurPage(total, items)
 
+
+@Ajax
+def project_apply_send_expert_list(request):
+	Auth(request,Const.ADMIN)
+	project_apply_list = ('pk', 'project_name',
+	                      'project_type__name', 'project_no','expert_names','applicant_time', 'status','study_type_name','project_comple_time')
+	start, limit = StartLimit(request)
+	user_filert=Q(status=StatusApprove.WAIT_EXPERT)
+	items = ProjectApply.objects.filter(user_filert).values(*project_apply_list)[start:limit]
+	total = ProjectApply.objects.filter(user_filert).count()
+	return CurPage(total, items)
+
+
+@Ajax
+def project_type_add(request):
+	Auth(request,Const.ADMIN)
+	kv=GetParam(request, 'name', 'waring_day','max_project_num','allow_apply')
+	p=ProjectType()
+	FillModel(kv,p,'allow_apply')
+	p.allow_apply=kv['allow_apply']=='on'
+	p.save()
+	return OK
 
 @Ajax
 def project_type_details(request):
@@ -1023,6 +1373,12 @@ def project_type_details(request):
 	return ProjectType.objects.filter(pk=int(kv['id'])).values(
 		'pk', 'name', 'waring_day','max_project_num','allow_apply')[0]
 
+@Ajax
+def project_type_del(request):
+	Auth(request, Const.ADMIN)
+	kv = GetParam(request, 'ids')
+	ProjectType.objects.filter(id__in=IdArray(kv['ids'])).delete()
+	return OK
 
 @Ajax
 def project_type_update(request):
@@ -1033,7 +1389,6 @@ def project_type_update(request):
 	p.max_project_num=int(kv['max_project_num'])
 	r=TryGetParam(request,'allow_apply')
 	p.allow_apply=True if r else False
-
 	p.save()
 	return CallBack(Const.OK)
 
@@ -1091,11 +1446,11 @@ def project_apply_add(request):
 
 	user = Auth(request, Const.APPLICANT)
 	if not user: raise Http404
-	kv, group_kv = GetArrayParams(request, *values)
+	kv = GetParam(request, *values)
 
-	levelachives = group_kv['levelachive'].values()
-	finalachives = group_kv['finalachive'].values()
-	actors = group_kv['actor'].values()
+	# levelachives = group_kv['levelachive'].values()
+	# finalachives = group_kv['finalachive'].values()
+	# actors = group_kv['actor'].values()
 	filecode = kv['file_code']
 
 	@transaction.commit_on_success
@@ -1122,16 +1477,35 @@ def project_apply_add(request):
 		t.save()
 
 
-
 		#添加参与者
-		for akv in actors:
-			pa.actors.add(FillModel(akv, ProjectActor()))
+		actors=FilGModel(
+			ProjectActor,kv,
+			'g__actor__name',
+			'g__actor__job_zw',
+			'g__actor__job_zc',
+			'g__actor__degree',
+			'g__actor__desc',)
+
+		for a in actors:pa.actors.add(a)
+
 		#最终成果
-		for fkv in finalachives:
-			pa.final_achives.add(FillModel(fkv, FinalAchievement()))
+		achives=FilGModel(FinalAchievement,kv,
+	                        'g__finalachive__end_time',
+				'g__finalachive__name',
+				'g__finalachive__atype',
+				'g__finalachive__font_num',
+				'g__finalachive__actor', )
+		for a in achives:pa.final_achives.add(a)
+
 		#阶段性成果
-		for lkv in levelachives:
-			pa.level_achives.add(FillModel(lkv, LevelAchievement()))
+		lachives=FilGModel(LevelAchievement,kv,
+		                   	'g__levelachive__start_time',
+					'g__levelachive__end_time',
+					'g__levelachive__name',
+					'g__levelachive__atype',
+					'g__levelachive__apply_user',
+		                   )
+		for l  in lachives:pa.level_achives.add(l)
 
 		pa.save()
 
@@ -1141,8 +1515,14 @@ def project_apply_add(request):
 
 @Ajax
 def mesage_waitpublist(request):
-	mesage_waitpublist_values = ('pk', 'title', 'abstract', 'sender_name', 'sender_real_name',
-	                       'sender_unit__name', 'send_time','is_read','content')
+	mesage_waitpublist_values = ('pk',
+	                        'title',
+	                        'abstract',
+	                        'sender_name',
+	                        'sender_real_name',
+	                        'sender_unit__name',
+	                        'send_time','is_read',
+	                        'content')
 	user = Auth(request)
 	start, limit = StartLimit(request)
 	conditon=[Q(receiver_unit_id=user.unit_id),Q(is_read=False)]
@@ -1152,8 +1532,14 @@ def mesage_waitpublist(request):
 
 @Ajax
 def message_list(request):
-	message_list_values = ('pk', 'title', 'abstract', 'sender_name', 'sender_real_name',
-	                       'sender_unit__name', 'send_time','is_read','content')
+	message_list_values = ('pk',
+	                       'title',
+	                       'abstract',
+	                       'sender_name',
+	                       'sender_real_name',
+	                       'sender_unit__name',
+	                       'send_time',
+	                       'is_read','content')
 	user = Auth(request)
 	start, limit = StartLimit(request)
 	conditon=[Q(receiver_unit_id=user.unit_id),Q(is_read=True)]
@@ -1274,10 +1660,15 @@ def message_notify(request):
 
 @Ajax
 def project_apply_submit(request):
+	user=Auth(request,Const.APPLICANT)
 	kv = GetParam(request, 'ids')
+	if user.unit.level==0:status=StatusApprove.WAIT_ADMIN_0
+	elif user.unit.level==1:status=StatusApprove.WAIT_ADMIN_1
+	else:status=StatusApprove.WAIT_ADMIN_2
+
 	if Auth(request, Const.APPLICANT):
 		ProjectApply.objects.filter(id__in=IdArray(kv['ids'])).\
-		update(status=StatusApprove.WAIT_ADMIN_2)
+		update(status=status)
 		return CallBack(Const.OK)
 @Ajax
 def project_apply_all_approves(request):
@@ -1290,6 +1681,8 @@ def project_apply_all_approves(request):
 		'approve__unit__name',
 		'approve__unit__level',
 		'approvetime',
+	        'expert_support',
+	        'expert_percent',
 		'approve_opinion','success')[start:limit]
 	count=ProjectApplyApprove.objects.filter(details_id=int(kv['pk'])).count()
 	return CurPage(count,items)
@@ -1353,22 +1746,48 @@ def project_admin_apply_all_approves(request):
 		condition&=Q(success=False)
 
 	build=int(kv['build'])
-	if build==1:
+	if build==1:#以立项
 		condition&=~Q(details__project_id=0)
-	elif build==0:
+		condition&=Q(type=1)
+	elif build==0:#审查
 		condition&=Q(details__project_id=0)
+
 
 	items=ProjectApplyApprove.objects.filter(condition).\
 	      values(
-
 		'approve__unit__name',
 		'approve__unit__level',
 		'approvetime',
 		'details__project_name',
 		'details__project_no',
-		'approve_opinion','success')[start:limit]
+		'approve_opinion',
+		'success'
+	)[start:limit]
 	count=ProjectApplyApprove.objects.filter(condition).count()
 	return CurPage(count,items)
+
+
+def download_project_admin_search_projects_excel(request):
+	Auth(request,Const.ADMIN)
+	condition=request.session['csearch']
+	renders=[
+		ExcelRender('项目编号','no'),
+		ExcelRender('审核单位','unit__name'),
+		ExcelRender('单位级别', 'unit__level',lambda x:UnitLevel.get(x,'未知级别')),
+		ExcelRender('申请时间', 'applicant_time',lambda x:x.strftime('%Y年%m月%d日')),
+		ExcelRender('项目名称','name'),
+		ExcelRender('项目类型','ptype__name'),
+		ExcelRender('项目状态','status',lambda x:ProjectStatus.get(x,'未知状态'))
+	]
+	items = Project.objects.filter(*condition).values('pk',
+	                                                  'name',
+	                                                  'no',
+	                                                  'status',
+	                                                  'applicant_time',
+	                                                  'unit__name',
+	                                                  'unit__level',
+	                                                  'ptype__name')
+	return  WriteDictToExcel(items,renders)
 
 
 def download_project_admin_apply_all_approves_excel(request):
@@ -1463,27 +1882,7 @@ def project_admin_back_all_approves(request):
 def project_apply_details(request):
 	kv=GetParam(request,'pk')
 	pk=int(kv['pk'])
-	return {
-		'levelachives':LevelAchievement.objects.filter(apply_id=pk).values(
-			'start_time',
-			'end_time',
-			'name',
-			'atype',
-			'apply_user'),
-	        'finalachives':FinalAchievement.objects.filter(apply_id=pk).values(
-		        'end_time',
-		        'name',
-		        'atype',
-		        'font_num',
-		        'actor',
-	        ),
-		'actors':ProjectActor.objects.filter(apply_id=pk).values(
-			'name',
-			'job',
-			'degree',
-			'desc',
-		),
-		'apply':ProjectApply.objects.filter(id=pk).values('project_name',
+	r=ProjectApply.objects.filter(id=pk).values('project_name',
 			#'project_title_name',
 			'project_type_id',
 			'project_area_name',
@@ -1513,35 +1912,57 @@ def project_apply_details(request):
 			'other_money',
 			'other_money_dec',
 			'file_code')[0]
-	}
+
+	r['levelachive']=LevelAchievement.objects.filter(apply_id=pk).values(
+			'start_time',
+			'end_time',
+			'name',
+			'atype',
+			'apply_user')
+	r['actor']=ProjectActor.objects.filter(apply_id=pk).values(
+			'name',
+			'job_zc',
+		        'job_zw',
+			'degree',
+			'desc',
+		)
+	r['finalachive']=FinalAchievement.objects.filter(apply_id=pk).values(
+		        'end_time',
+		        'name',
+		        'atype',
+		        'font_num',
+		        'actor',
+	        )
+	return r
 
 
 
 @Ajax
 def project_apply_approve(request):
-	def ProceedApprove(user, success):
-		if IsAdmin(user):
-			if user.unit.level == 0:
-				#科技局查看 项目审查
-				kv=GetParam(request,'wait_admin_look')
-				if int(kv['wait_admin_look'])==1:
-					return StatusApprove.WAIT_SET_EXPERT if success else StatusApprove.WAIT_SUBMIT
-				else:
-					#审核
-					return StatusApprove.SUCCESS if success else StatusApprove.WAIT_SUBMIT
+	wait_admin_look=TryGetParam(request,'wait_admin_look')
+	def AdminProceedApprove(user, success):
+		# if IsAdmin(user):
+		if user.unit.level == 0:
+			#科技局查看 项目审查
+			if wait_admin_look and wait_admin_look.value==1:
+				return StatusApprove.WAIT_SET_EXPERT if success else StatusApprove.WAIT_SUBMIT
+			else:
+				#审核
+				return StatusApprove.SUCCESS if success else StatusApprove.WAIT_SUBMIT
 
-			elif user.unit.level == 1:
-				#一级单位查看 子部门 待审核
-				#return StatusApprove.WAIT_SET_EXPERT if success else StatusApprove.FAILED_ADMIN_1
-				return StatusApprove.WAIT_AMIDN_0_LOOK if success else StatusApprove.WAIT_SUBMIT
-			elif user.unit.level == 2:
-				#二级单位管理员 待审核
-				#return StatusApprove.WAIT_ADMIN_1 if success else StatusApprove.FAILED_ADMIN_2
-				return StatusApprove.WAIT_ADMIN_1 if success else StatusApprove.WAIT_SUBMIT
+		elif user.unit.level == 1:
+			#一级单位查看 子部门 待审核
+			#return StatusApprove.WAIT_SET_EXPERT if success else StatusApprove.FAILED_ADMIN_1
+			return StatusApprove.WAIT_AMIDN_0_LOOK if success else StatusApprove.WAIT_SUBMIT
 
-		elif IsExpert(user):
-			#专家转管理员审核
-			return StatusApprove.WAIT_ADMIN_0
+		elif user.unit.level == 2:
+			#二级单位管理员 待审核
+			#return StatusApprove.WAIT_ADMIN_1 if success else StatusApprove.FAILED_ADMIN_2
+			return StatusApprove.WAIT_ADMIN_1 if success else StatusApprove.WAIT_SUBMIT
+
+		# elif IsExpert(user):
+		# 	#专家转管理员审核
+		# 	return StatusApprove.WAIT_ADMIN_0
 
 		raise Http404
 
@@ -1550,33 +1971,89 @@ def project_apply_approve(request):
 	kv = GetParam(request, 'ids', 'pass', 'option')
 	success = bool(kv['pass'] == 'true')
 	option = kv['option']
-	approve_status = ProceedApprove(user, success)
+	approve_status = AdminProceedApprove(user, success)
 	now, idArr = datetime.now(), IdArray(kv['ids'])
-	if IsAdmin(user) or IsExpert(user):
+
+	expert_percent=TryGetParam(request,'expert_percent')
+	expert_support=TryGetParam(request,'expert_support')
+	admin_support=TryGetParam(request,'admin_support')
+
+	if IsAdmin(user):
 		ProjectApply.objects.filter(id__in=idArr).update(status=approve_status)
 		applys = ProjectApply.objects.filter(id__in=idArr)
+		admin_support=admin_support.value if IsSysAdmin(user)   else ''
+
+		if success:
+			ProjectApply.objects.filter(id__in=idArr).update(
+				admin_support_result=admin_support)
+
 		bulk = [ProjectApplyApprove(
 			approve=user,
 			approvetime=now,
-			approve_opinion=kv['option'],
+			approve_opinion=option,
 			success=success,
+		        type=wait_admin_look.value if  wait_admin_look else 0,
+			expert_support=expert_support.value if expert_support else '',
+		        expert_percent=expert_percent.value if expert_percent else '',
 			details=p) for p in applys]
+
 		ProjectApplyApprove.objects.bulk_create(bulk)
+
 		#项目立项申请通过
 		if approve_status == StatusApprove.SUCCESS:
 			for p in applys: p.CreateProject()
 
-	if IsExpert(user):
-		expert_percent=TryGetParam(request,'expert_percent')
-		ProjectApply.objects.filter(id__in=idArr).update(
-			status=approve_status,
-			expert_success=success,
-			expert_percent=expert_percent.value,
-			expert_approve_time=now,
-			expert_opinion=option)
+	elif IsExpert(user):
+		applys = ProjectApply.objects.filter(id__in=idArr)
+		bulk = [ProjectApplyApprove(
+			approve=user,
+			approvetime=now,
+			approve_opinion=option,
+			success=success,
+			expert_support=expert_support.value if expert_support else '',
+		        expert_percent=expert_percent.value if expert_percent else '',
+			details=p) for p in applys]
+		ProjectApplyApprove.objects.bulk_create(bulk)
 
+		ProjectApplyExpert.objects.filter(apply_id__in=idArr,expert_id=user.pk).update(
+			approved=True,
+	                refused=0 if success else 1,
+			expert_percent=expert_percent.value if success else '',
+			expert_support=expert_support.value if success else '')
+
+		#重新计算平均分 如果专家都提交了 则提交请求给一级管理员
+		for a in applys:
+			#提交审核
+			if success:
+				a.RePercent(expert_percent.value)
 	return CallBack('审核成功！' + ApproveStatus.get(approve_status))
 
+@Ajax
+def project_apply_endexperttalk(request):
+	"""结束评审"""
+	Auth(request,Const.ADMIN)
+	kv = GetParam(request, 'ids')
+	idArray=IdArray(kv['ids'])
+	ProjectApply.objects.filter(id__in=idArray).update(status=StatusApprove.WAIT_ADMIN_0)
+	return OK
+
+@Ajax
+def project_apply_expertapproves_list(request):
+	kv=GetParam(request,'pk')
+	start, limit = StartLimit(request)
+	items =ProjectApplyExpert.objects.filter(apply_id=int(kv['pk'])).values(
+		'apply__project_name',
+		'apply__project_no',
+	        'expert__name',
+	        'email_back',
+	        'refused',
+	        'approved',
+	        'approvetime',
+	        'expert_percent',
+	        'expert_support',
+	)[start:limit]
+	total=ProjectApplyExpert.objects.filter(apply_id=int(kv['pk'])).count()
+	return CurPage(total,items)
 
 
 @Ajax
@@ -1716,7 +2193,7 @@ def download_project_apply_doc_temp(request):
 
 
 def raw_code(request):
-	import ImageFont, Image, ImageDraw, random
+	import  Image, ImageDraw, random
 	from cStringIO import StringIO
 
 	string = {'number': '12345679',
